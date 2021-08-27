@@ -39,33 +39,37 @@ $ jobhist
 
 ### jobinfo
 
-Print detailed information for a pending, running, or completed job.
+Print detailed information for a job.
 
 ```
 $ jobinfo 483699
 Job ID               : 483699
-Job name             : sim.sl
+Job name             : simdebug.sl
 User                 : ttrojan
 Account              : ttrojan_123
 Cluster              : discovery
-Partition            : oneweek
-Nodes                : 1
-Nodelist             : e01-76
-CPUs                 : 16
+Partition            : debug
+Nodes                : 2
+Nodelist             : e05-[42,76]
+Tasks                : 32
+CPUs                 : 32
 GPUs                 : 0
-State                : FAILED
-Exit code            : 1:0
-Submit time          : 2021-06-22T12:38:06
-Start time           : 2021-06-22T12:38:15
-End time             : 2021-06-25T12:40:53
-Wait time            :   00:00:09
-Reserved walltime    : 3-07:00:00
-Used walltime        : 3-00:02:38
-Used CPU time        : 3-14:00:01
-% User (computation) : 93.82%
-% System (I/O)       :  6.18%
-Memory reserved      : 248G/node
-Max memory used      : 218.60G (e01-76)
-Max disk write       : 143.41G (e01-76)
-Max disk read        : 352.60G (e01-76)
+State                : COMPLETED
+Exit code            : 0:0
+Submit time          : 2021-08-26T14:56:23
+Start time           : 2021-08-26T14:56:24
+End time             : 2021-08-26T14:57:32
+Wait time            : 00:00:01
+Reserved walltime    : 00:10:00
+Used walltime        : 00:01:08
+Used CPU walltime    : 00:36:16
+Used CPU time        : 00:35:18
+% User (computation) : 96.35%
+% System (I/O)       :  3.65%
+CPU efficiency       : 97.37%
+Memory reserved      : 61352M/node
+Max memory used      : 64.74G (estimate)
+Memory efficiency    : 54.03%
+Max disk write       : 1.04M
+Max disk read        : 14.42M
 ```

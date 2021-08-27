@@ -2,7 +2,9 @@
 
 # jobinfo
 
-# Print detailed information for a pending, running, or completed job
+# Usage: jobinfo <job_id>
+
+# Print detailed information for a job
 # Based on output from sacct, sstat, and squeue
 # Modified from jobinfo script found at https://github.com/birc-aeh/slurm-utils
 
@@ -57,7 +59,32 @@ def elapsed_to_seconds(elapsed):
 def format_bs(x):
     postfix = ' KMGTPE'
     e = int(math.log(x+1, 2)/10)
-    return "%.2f%s" % (x / 2**(10*e), postfix[e])
+    return "%.2f%s" % (x / 2**(10 * e), postfix[e])
+
+def mem_to_kb(x):
+    if x.endswith('G'):
+        req = int(x[:-1])
+        return req * 1024 * 1024
+    elif x.endswith('M'):
+        req = int(x[:-1])
+        return req * 1024
+    elif x.endswith('K'):
+        req = int(x[:-1])
+        return req
+    else:
+        return "??"
+
+def totalmem(x, meta):
+    if x.endswith('c'):
+        req = "%s" % x[:-1]
+        creq = mem_to_kb(req)
+        return creq * int(meta.ncpus)
+    elif x.endswith('n'):
+        req = "%s" % x[:-1]
+        creq = mem_to_kb(req)
+        return creq * int(meta.NNodes)
+    else:
+        return "??"
 
 def whoami():
     import pwd
@@ -109,27 +136,29 @@ def time_max(a, b):
 
 # Formatters
 
-def f_rss(x, meta):
-    if x < 0:
+def f_tasks(x, meta):
+    if not x:
         return "--"
-    return "%s (%s)" % (format_bs(x), ",".join(meta.MaxRSSNode))
+    return str(x)
 
-def f_dw(x, meta):
+def f_drw(x, meta):
     if x < 0:
         return "--"
-    return "%s (%s)" % (format_bs(x), ",".join(meta.MaxDiskWriteNode))
-
-def f_dr(x, meta):
-    if x < 0:
-        return "--"
-    return "%s (%s)" % (format_bs(x), ",".join(meta.MaxDiskReadNode))
+    return "%s" % format_bs(x)
 
 def f_cpu(x, meta):
     total = elapsed_to_seconds(meta.TotalCPU)
     if total == 0:
         return "--"
-    xp = elapsed_to_seconds(x)
-    return "%5.2f%%" % (xp/total*100)
+    xs = elapsed_to_seconds(x)
+    return "%5.2f%%" % (xs / total * 100)
+
+def f_cpueff(x, meta):
+    total = elapsed_to_seconds(meta.TotalCPU)
+    if total == 0:
+        return "--"
+    xint = int(x)
+    return "%5.2f%%" % (total / xint * 100)
 
 def f_mem(x, meta):
     if x.endswith('c'):
@@ -138,6 +167,22 @@ def f_mem(x, meta):
         return "%s/node" % (x[:-1])
     else:
         return x
+
+def f_rss(x, meta):
+    if x < 0:
+        return "--"
+    totalx = x * int(meta.NTasks)
+    return "%s (%s)" % (format_bs(totalx), "estimate")
+
+def f_memeff(x, meta):
+    if x < 0:
+        return "--"
+    max = x / 1024 * int(meta.NTasks)
+    req = str(meta.ReqMem)
+    creq = totalmem(req, meta)
+    if str(creq).endswith('?'):
+        return "??"
+    return "%5.2f%%" % (max / creq * 100)
 
 def f_time(x, meta):
     all_times = [meta.timelimit, meta.elapsed, meta.TotalCPU, meta.reserved]
@@ -179,34 +224,35 @@ def f_state(states, meta):
 hide, show = False, True
 Field = NT('Field', 'name ctor combinator shown prefer_sstat formatter desc')
 FIELDS = [
-        Field("JobID",               str,        keep_first,   show,  False, f_str,     "Job ID"),
-        Field("JobName",             str,        keep_first,   show,  False, f_str,     "Job name"),
-        Field("User",                str,        keep_first,   show,  False, f_str,     "User"),
-        Field("Account",             str,        keep_first,   show,  False, f_str,     "Account"),
-        Field("Cluster",             str,        keep_first,   show,  False, f_str,     "Cluster"),
-        Field("Partition",           str,        keep_first,   show,  False, f_str,     "Partition"),
-        Field("NNodes",              str,        keep_first,   show,  False, f_str,     "Nodes"),
-        Field("NodeList",            str,        keep_first,   show,  False, f_str,     "Nodelist"),
-        Field("ncpus",               int,        max,          show,  False, f_str,     "CPUs"),
-        Field("ReqTRES",             gpu_str,    max,          show,  False, f_str,     "GPUs"),
-        Field("State",               str_set,    set.union,    show,  False, f_state,   "State"),
-        Field("ExitCode",            str,        keep_first,   show,  False, f_exit,    "Exit code"),
-        Field("Submit",              str,        keep_first,   show,  False, f_str,     "Submit time"),
-        Field("start",               date_str,   min,          show,  False, f_date,    "Start time"),
-        Field("end",                 str,        time_max,     show,  False, f_date,    "End time"),
-        Field("reserved",            date_str,   min,          show,  False, f_time,    "Wait time"),
-        Field("timelimit",           str,        time_max,     show,  False, f_time,    "Reserved walltime"),
-        Field("elapsed",             str,        time_max,     show,  False, f_time,    "Used walltime"),
-        Field("TotalCPU",            str,        max,          show,  False, f_time,    "Used CPU time"),
-        Field("UserCPU",             str,        max,          show,  False, f_cpu,     "% User (computation)"),
-        Field("SystemCPU",           str,        max,          show,  False, f_cpu,     "% System (I/O)"),
-        Field("ReqMem",              str,        keep_first,   show,  False, f_mem,     "Memory reserved"),
-        Field("MaxRSS",              byte_size,  max,          show,  True,  f_rss,     "Max memory used"),
-        Field("MaxDiskWrite",        byte_size,  max,          show,  True,  f_dw,      "Max disk write"),
-        Field("MaxDiskRead",         byte_size,  max,          show,  True,  f_dr,      "Max disk read"),
-        Field("MaxRSSNode",          str_set,    set.union,    hide,  True,  None,      ""),
-        Field("MaxDiskWriteNode",    str_set,    set.union,    hide,  True,  None,      ""),
-        Field("MaxDiskReadNode",     str_set,    set.union,    hide,  True,  None,      ""),
+        Field("JobID",         str,        keep_first,   show,  False,  f_str,     "Job ID"),        
+        Field("JobName",       str,        keep_first,   show,  False,  f_str,     "Job name"),
+        Field("User",          str,        keep_first,   show,  False,  f_str,     "User"),
+        Field("Account",       str,        keep_first,   show,  False,  f_str,     "Account"),
+        Field("Cluster",       str,        keep_first,   show,  False,  f_str,     "Cluster"),
+        Field("Partition",     str,        keep_first,   show,  False,  f_str,     "Partition"),
+        Field("NNodes",        str,        keep_first,   show,  False,  f_str,     "Nodes"),
+        Field("NodeList",      str,        keep_first,   show,  False,  f_str,     "Nodelist"),
+        Field("NTasks",        str,        max,          show,  False,  f_tasks,   "Tasks"),
+        Field("ncpus",         int,        max,          show,  False,  f_str,     "CPUs"),
+        Field("ReqTRES",       gpu_str,    max,          show,  False,  f_str,     "GPUs"),
+        Field("State",         str_set,    set.union,    show,  False,  f_state,   "State"),
+        Field("ExitCode",      str,        keep_first,   show,  False,  f_exit,    "Exit code"),
+        Field("Submit",        str,        keep_first,   show,  False,  f_str,     "Submit time"),
+        Field("start",         date_str,   min,          show,  False,  f_date,    "Start time"),
+        Field("end",           str,        time_max,     show,  False,  f_date,    "End time"),
+        Field("reserved",      date_str,   min,          show,  False,  f_time,    "Wait time"),
+        Field("timelimit",     str,        time_max,     show,  False,  f_time,    "Reserved walltime"),
+        Field("elapsed",       str,        time_max,     show,  False,  f_time,    "Used walltime"),
+        Field("CPUTime",       str,        keep_first,   show,  False,  f_time,    "Used CPU walltime"),
+        Field("TotalCPU",      str,        keep_first,   show,  False,  f_time,    "Used CPU time"),
+        Field("UserCPU",       str,        keep_first,   show,  False,  f_cpu,     "% User (computation)"),
+        Field("SystemCPU",     str,        keep_first,   show,  False,  f_cpu,     "% System (I/O)"),
+        Field("CPUTimeRaw",    str,        keep_first,   show,  False,  f_cpueff,  "CPU efficiency"),
+        Field("ReqMem",        str,        keep_first,   show,  False,  f_mem,     "Memory reserved"),
+        Field("MaxRSS",        byte_size,  max,          show,  True,   f_rss,     "Max memory used"),
+        Field("maxrss",        byte_size,  max,          show,  True,   f_memeff,  "Memory efficiency"),
+        Field("MaxDiskWrite",  byte_size,  max,          show,  True,   f_drw,     "Max disk write"),
+        Field("MaxDiskRead",   byte_size,  max,          show,  True,   f_drw,     "Max disk read")
         ]
 
 FIELD_NAMES = [f.name for f in FIELDS]
@@ -262,7 +308,7 @@ def main(jobid):
         if len(tmp) != 0:
             ys.append(combine(tmp))
     if "PENDING" in meta.State:
-        info = subprocess.Popen(['squeue', '--format=%E;%R', '--noheader', '-a', '-j', jobid], stdout=subprocess.PIPE)
+        info = subprocess.Popen(['squeue', '--format=%E;%R', '--noheader', '-a', '-j', jobid], stdout=subprocess.PIPE)    
         dependencies, reason = info.stdout.readline().strip().split(";")
         if dependencies == "(null)":
             dependencies = ""
@@ -290,7 +336,7 @@ if __name__ == "__main__":
         usage(sys.stderr)
         sys.exit(1)
     jobid = sys.argv[1]
-    if len(set(jobid) - set("0123456789_.")) > 0:
+    if len(set(jobid) - set("0123456789_+.")) > 0:
         print >>sys.stderr, "Error: The argument does not look like a valid job ID"
         usage(sys.stderr)
         sys.exit(1)
