@@ -1,0 +1,80 @@
+#!/bin/bash
+
+# nodeinfo
+
+help() {
+    # Display help information
+    echo "nodeinfo / Display node information by partition, CPU/GPU model, and state"
+    echo ""
+    echo "Options:"
+    echo ""
+    echo "-p  Filter partitions"
+    echo ""
+    echo "    * Default value shows all partitions"
+    echo "    * Multiple partitions can be specified with comma separation"
+    echo ""
+    echo "-s  Filter node states"
+    echo ""
+    echo "    * Default value shows all nodes (in any state)"
+    echo "    * Common node state options include the following:"
+    echo "        alloc,down,drain,fail,idle,maint,mix"
+    echo "    * Multiple options can be specified with comma separation"
+    echo ""
+    echo "Examples:"
+    echo ""
+    echo "  nodeinfo"
+    echo "  nodeinfo -h"
+    echo "  nodeinfo -p epyc-64"
+    echo "  nodeinfo -s idle"
+    echo "  nodeinfo -s idle,mix"
+    echo "  nodeinfo -p largemem -s idle"
+    echo "  nodeinfo -p main,gpu -s idle,mix"
+}
+
+# Set default values for option arguments
+states=all
+partitions=
+# There is no all value for sinfo --partition option, so leave blank
+# See if statement below
+
+# Define options
+while getopts ":hp:s:" option; do
+   case $option in
+      h) # display help
+         help
+         exit 0
+         ;;
+      p) # select partitions
+         partitions="$OPTARG"
+         if [[ $partitions =~ ^- ]]; then
+           echo "Invalid argument to option -p"
+           exit 1
+         fi
+         ;;
+      s) # select node states
+         states="$OPTARG"
+         if [[ $states =~ ^- ]]; then
+           echo "Invalid argument to option -s"
+           exit 1
+         fi
+         ;;
+      \?) # invalid argument
+         echo "Invalid option -$OPTARG" >&2
+         exit 1
+         ;;
+   esac
+done
+
+if [[ $partitions = "" ]]; then
+    # List all partitions
+    echo "---------------------------------------------------------------------------------------------------------------------"
+    echo "Partition    CPU model     GPU model          State  Nodes CPUs Memory(MB) Timelimit   Nodelist                      "
+    echo "------------ ------------- ------------------ ------ ----- ---- ---------- ----------- ------------------------------"
+    sinfo --noheader --format="%12P %13b %18G %6t %5D %4c %10m %11l %30N" --states=$states
+else
+    # List specified partitions
+    echo "---------------------------------------------------------------------------------------------------------------------"
+    echo "Partition    CPU model     GPU model          State  Nodes CPUs Memory(MB) Timelimit   Nodelist                      "
+    echo "------------ ------------- ------------------ ------ ----- ---- ---------- ----------- ------------------------------"
+    sinfo --noheader --format="%12P %13b %18G %6t %5D %4c %10m %11l %30N" --states=$states --partition=$partitions
+fi
