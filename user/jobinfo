@@ -224,10 +224,11 @@ def f_state(states, meta):
 hide, show = False, True
 Field = NT('Field', 'name ctor combinator shown prefer_sstat formatter desc')
 FIELDS = [
-        Field("JobID",         str,        keep_first,   show,  False,  f_str,     "Job ID"),        
+        Field("JobID",         str,        keep_first,   show,  False,  f_str,     "Job ID"),
         Field("JobName",       str,        keep_first,   show,  False,  f_str,     "Job name"),
         Field("User",          str,        keep_first,   show,  False,  f_str,     "User"),
         Field("Account",       str,        keep_first,   show,  False,  f_str,     "Account"),
+        Field("WorkDir",       str,        keep_first,   show,  False,  f_str,     "Working directory"),
         Field("Cluster",       str,        keep_first,   show,  False,  f_str,     "Cluster"),
         Field("Partition",     str,        keep_first,   show,  False,  f_str,     "Partition"),
         Field("NNodes",        str,        keep_first,   show,  False,  f_str,     "Nodes"),
@@ -248,7 +249,7 @@ FIELDS = [
         Field("UserCPU",       str,        keep_first,   show,  False,  f_cpu,     "% User (computation)"),
         Field("SystemCPU",     str,        keep_first,   show,  False,  f_cpu,     "% System (I/O)"),
         Field("CPUTimeRaw",    str,        keep_first,   show,  False,  f_cpueff,  "CPU efficiency"),
-        Field("ReqMem",        str,        keep_first,   show,  False,  f_mem,     "Memory reserved"),
+        Field("ReqMem",        str,        keep_first,   show,  False,  f_mem,     "Reserved memory"),
         Field("MaxRSS",        byte_size,  max,          show,  True,   f_rss,     "Max memory used"),
         Field("maxrss",        byte_size,  max,          show,  True,   f_memeff,  "Memory efficiency"),
         Field("MaxDiskWrite",  byte_size,  max,          show,  True,   f_drw,     "Max disk write"),
@@ -308,7 +309,7 @@ def main(jobid):
         if len(tmp) != 0:
             ys.append(combine(tmp))
     if "PENDING" in meta.State:
-        info = subprocess.Popen(['squeue', '--format=%E;%R', '--noheader', '-a', '-j', jobid], stdout=subprocess.PIPE)    
+        info = subprocess.Popen(['squeue', '--format=%E;%R', '--noheader', '-a', '-j', jobid], stdout=subprocess.PIPE)
         dependencies, reason = info.stdout.readline().strip().split(";")
         if dependencies == "(null)":
             dependencies = ""
