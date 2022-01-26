@@ -8,4 +8,4 @@ See the documentation for individual tools for more details on how to use them.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) (unless otherwise noted)
