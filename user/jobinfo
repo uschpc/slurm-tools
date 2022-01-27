@@ -10,7 +10,7 @@
 
 # MIT License
 
-# Copyright (c) 2021 USC Center for Advanced Research Computing
+# Copyright (c) 2021-2022 USC Center for Advanced Research Computing
 # Copyright (c) 2015-2021 Anders Halager
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -38,6 +38,8 @@ import subprocess
 import sys
 import time
 from collections import namedtuple as NT
+
+# Define utilities
 
 def parse_time(t):
     # Format: [DD-[hh:]]mm:ss
@@ -93,7 +95,7 @@ def whoami():
 def without_fraction(s):
     return "." in s and s[:s.rfind(".")] or s
 
-# Constructors / parsers
+# Define constructors
 
 def str_set(x=None):
     if x in [None, '']:
@@ -101,10 +103,25 @@ def str_set(x=None):
     return set([x])
 
 def gpu_str(s=None):
-    if s is None or "gres/gpu=" not in s.lower():
+    # No GPUs requested
+    if s is None or "gres/gpu" not in s.lower():
         return 0
-    m = re.match(r".*gres/gpu=(?P<num_gpus>\d+)", s.lower())
-    return int(m.group('num_gpus'))
+    # GPUs requested
+    # sacct returns two values for AllocTRES
+    # One for <job_id> and one for <job_id>.batch or <job_id>.interactive
+    # The total number of GPUs requested is found in the first value
+    # If a specific GPU type is not requested, then a GPU type is
+    # only found in the second value, but currently it is not accurate
+    # Number of GPUs requested
+    g = re.match(r".*gres/gpu=(?P<num_gpus>\d+)", s.lower())
+    g_str = g.group('num_gpus')
+    t = re.match(r".*gres/gpu:(?P<gpu_type>\w\d+)", s.lower())
+    # Specific GPU type is not requested
+    if t is None:
+        return g_str
+    # Specific GPU type is requested
+    t_str = t.group('gpu_type')
+    return g_str + " (" + t_str + ")"
 
 def byte_size(s=None):
     if s in [None, "", "16?"]:
@@ -120,7 +137,7 @@ def date_str(s=None):
         return "9999-01-01T00:00:00"
     return s
 
-# Combinators
+# Define combinators
 
 def keep_first(a, b):
     return a == '' and b or a
@@ -134,7 +151,7 @@ def time_max(a, b):
         return a
     return max(a, b)
 
-# Formatters
+# Define formatters
 
 def f_tasks(x, meta):
     if not x:
@@ -221,6 +238,8 @@ def f_state(states, meta):
         deps = " (%s)" % deps
     return ','.join(states) + reason + deps
 
+# Define fields and how they will be processed
+
 hide, show = False, True
 Field = NT('Field', 'name ctor combinator shown prefer_sstat formatter desc')
 FIELDS = [
@@ -235,7 +254,7 @@ FIELDS = [
         Field("NodeList",      str,        keep_first,   show,  False,  f_str,     "Nodelist"),
         Field("NTasks",        str,        max,          show,  False,  f_tasks,   "Tasks"),
         Field("ncpus",         int,        max,          show,  False,  f_str,     "CPUs"),
-        Field("ReqTRES",       gpu_str,    max,          show,  False,  f_str,     "GPUs"),
+        Field("AllocTRES",     gpu_str,    keep_first,   show,  False,  f_str,     "GPUs"),
         Field("State",         str_set,    set.union,    show,  False,  f_state,   "State"),
         Field("ExitCode",      str,        keep_first,   show,  False,  f_exit,    "Exit code"),
         Field("Submit",        str,        keep_first,   show,  False,  f_str,     "Submit time"),
@@ -263,6 +282,8 @@ FIELD_COMB = [f.combinator for f in FIELDS]
 FORMAT_STR = "--format=%s" % (",".join(FIELD_NAMES))
 FORMAT_SSTAT_STR = "--format=%s" % (",".join(FIELD_NAMES_SSTAT))
 Meta = NT('Meta', FIELD_NAMES + ['dependencies', 'reason'])
+
+# Get, process, and combine values
 
 def combine(xs):
     r = xs[0]
