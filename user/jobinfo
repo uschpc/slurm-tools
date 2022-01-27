@@ -2,9 +2,10 @@
 
 # jobinfo
 
-# Usage: jobinfo <job_id>
+# Usage:   jobinfo <job_id>
+# Example: jobinfo 111111
 
-# Print detailed information for a job
+# Display detailed job information
 # Based on output from sacct, sstat, and squeue
 # Modified from jobinfo script found at https://github.com/birc-aeh/slurm-utils
 
@@ -297,6 +298,7 @@ def get_values(jobid):
     xs = []
     for line in info.stdout:
         fields = line.strip().split('|')
+        # Skip <job_id>.extern values (not needed)
         if fields[0].endswith(".extern"):
             continue
         xs.append([ctor(s) for ctor, s in zip(FIELD_CTORS, fields)])
@@ -347,14 +349,16 @@ def main(jobid):
 
 def usage(pipe):
     print >>pipe, \
-"""Usage: jobinfo <job_id>"""
+"""jobinfo / Display detailed job information
+Usage:   jobinfo <job_id>
+Example: jobinfo 111111"""
 
 if __name__ == "__main__":
     if "-h" in sys.argv or "--help" in sys.argv:
         usage(sys.stdout)
         sys.exit(0)
     if len(sys.argv) != 2:
-        print >>sys.stderr, "Error: There should be one argument"
+        print >>sys.stderr, "Error: There should be one argument (job ID)"
         usage(sys.stderr)
         sys.exit(1)
     jobid = sys.argv[1]
