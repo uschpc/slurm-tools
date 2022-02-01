@@ -1,16 +1,18 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # myqueue
 
-# Print job queue information for user
+# Display job queue information for user
 
-if [ -z  "$1" ]; then
+set -e -o pipefail
+
+if [[ -z $1 ]]; then
     user=$USER
 else
     user=$1
 fi
 
-echo "------------------------------------------------------------------------------"
-echo "      Job ID     Job Name  Partition    State     Elapsed     Nodelist(Reason)"
-echo "------------ ------------ ---------- -------- ----------- --------------------"
-squeue -u $user -h -o "%12i %.12j %.10P %.8T %.11M %.20R"
+printf "%s\n" "------------------------------------------------------------------------------"
+printf "%s\n" "      Job ID     Job Name  Partition    State     Elapsed     Nodelist(Reason)"
+printf "%s\n" "------------ ------------ ---------- -------- ----------- --------------------"
+squeue -h -o "%12i %.12j %.10P %.8T %.11M %.20R" -u $user
