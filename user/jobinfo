@@ -66,13 +66,13 @@ def format_bs(x):
 
 def mem_to_kb(x):
     if x.endswith('G'):
-        req = int(x[:-1])
+        req = float(x[:-1])
         return req * 1024 * 1024
     elif x.endswith('M'):
-        req = int(x[:-1])
+        req = float(x[:-1])
         return req * 1024
     elif x.endswith('K'):
-        req = int(x[:-1])
+        req = float(x[:-1])
         return req
     else:
         return "??"
@@ -173,9 +173,9 @@ def f_cpu(x, meta):
 
 def f_cpueff(x, meta):
     total = elapsed_to_seconds(meta.TotalCPU)
-    if total == 0:
-        return "--"
     xint = int(x)
+    if xint == 0 or total == 0:
+        return "--"
     return "%5.2f%%" % (total / xint * 100)
 
 def f_mem(x, meta):
