@@ -1,34 +1,40 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # nodeinfo
 
+set -eu -o pipefail
+
 help() {
     # Display help information
-    echo "nodeinfo / Display node information by partition, CPU/GPU model, and state"
-    echo ""
-    echo "Options:"
-    echo ""
-    echo "-p  Filter partitions"
-    echo ""
-    echo "    * Default value shows all partitions"
-    echo "    * Multiple partitions can be specified with comma separation"
-    echo ""
-    echo "-s  Filter node states"
-    echo ""
-    echo "    * Default value shows all nodes (in any state)"
-    echo "    * Common node state options include the following:"
-    echo "        alloc,down,drain,fail,idle,maint,mix"
-    echo "    * Multiple options can be specified with comma separation"
-    echo ""
-    echo "Examples:"
-    echo ""
-    echo "  nodeinfo"
-    echo "  nodeinfo -h"
-    echo "  nodeinfo -p epyc-64"
-    echo "  nodeinfo -s idle"
-    echo "  nodeinfo -s idle,mix"
-    echo "  nodeinfo -p largemem -s idle"
-    echo "  nodeinfo -p main,gpu -s idle,mix"
+    printf "%s\n" "nodeinfo / Display node information by partition, CPU/GPU models, and state"
+    printf "%s\n" ""
+    printf "%s\n" "Usage: nodeinfo [-h] [-p <partition>] [-s <state>]"
+    printf "%s\n" ""
+    printf "%s\n" "Options:"
+    printf "%s\n" ""
+    printf "%s\n" "-h  Display help"
+    printf "%s\n" ""
+    printf "%s\n" "-p  Filter partitions"
+    printf "%s\n" ""
+    printf "%s\n" "    * Default value shows all partitions"
+    printf "%s\n" "    * Multiple partitions can be specified with comma separation"
+    printf "%s\n" ""
+    printf "%s\n" "-s  Filter node states"
+    printf "%s\n" ""
+    printf "%s\n" "    * Default value shows all nodes (in any state)"
+    printf "%s\n" "    * Common node state options include the following:"
+    printf "%s\n" "        alloc,down,drain,fail,idle,maint,mix"
+    printf "%s\n" "    * Multiple options can be specified with comma separation"
+    printf "%s\n" ""
+    printf "%s\n" "Examples:"
+    printf "%s\n" ""
+    printf "%s\n" "  nodeinfo"
+    printf "%s\n" "  nodeinfo -h"
+    printf "%s\n" "  nodeinfo -p epyc-64"
+    printf "%s\n" "  nodeinfo -s idle"
+    printf "%s\n" "  nodeinfo -s idle,mix"
+    printf "%s\n" "  nodeinfo -p largemem -s idle"
+    printf "%s\n" "  nodeinfo -p main,gpu -s idle,mix"
 }
 
 # Set default values for option arguments
@@ -47,34 +53,33 @@ while getopts ":hp:s:" option; do
       p) # select partitions
          partitions="$OPTARG"
          if [[ $partitions =~ ^- ]]; then
-           echo "Invalid argument to option -p"
+           printf "%s\n" "Error: Invalid argument to option -p"
            exit 1
          fi
          ;;
       s) # select node states
          states="$OPTARG"
          if [[ $states =~ ^- ]]; then
-           echo "Invalid argument to option -s"
+           printf "%s\n" "Error: Invalid argument to option -s"
            exit 1
          fi
          ;;
       \?) # invalid argument
-         echo "Invalid option -$OPTARG" >&2
+         printf "%s\n" "Error: Invalid option -$OPTARG" >&2
          exit 1
          ;;
    esac
 done
 
+printf "%s\n" "-----------------------------------------------------------------------------------------------------------------------"
+printf "%s\n" "Partition    Timelimit   CPU model     CPUs/ GPU model          Memory(MB)/ State  Nodes Nodelist                      "
+printf "%s\n" "                                       node                     node                                                   "
+printf "%s\n" "------------ ----------- ------------- ----- ------------------ ----------- ------ ----- ------------------------------"
+
 if [[ $partitions = "" ]]; then
     # List all partitions
-    echo "---------------------------------------------------------------------------------------------------------------------"
-    echo "Partition    CPU model     GPU model          State  Nodes CPUs Memory(MB) Timelimit   Nodelist                      "
-    echo "------------ ------------- ------------------ ------ ----- ---- ---------- ----------- ------------------------------"
-    sinfo --noheader --format="%12P %13b %18G %6t %5D %4c %10m %11l %30N" --states=$states
+    sinfo -h -o "%12P %11l %13b %5c %18G %11m %6t %5D %30N" -t $states
 else
     # List specified partitions
-    echo "---------------------------------------------------------------------------------------------------------------------"
-    echo "Partition    CPU model     GPU model          State  Nodes CPUs Memory(MB) Timelimit   Nodelist                      "
-    echo "------------ ------------- ------------------ ------ ----- ---- ---------- ----------- ------------------------------"
-    sinfo --noheader --format="%12P %13b %18G %6t %5D %4c %10m %11l %30N" --states=$states --partition=$partitions
+    sinfo -h -o "%12P %11l %13b %5c %18G %11m %6t %5D %30N" -t $states -p $partitions
 fi
