@@ -72,8 +72,8 @@ while getopts ":hp:s:" option; do
 done
 
 printf "%s\n" "------------------------------------------------------------------------------------------------------------------------------"
-printf "%s\n" "Partition    Timelimit   CPU model     CPUs/ S:C:T/ GPU model          Memory(MB)/ State  Nodes Nodelist                      "
-printf "%s\n" "                                       node  node                      node                                                   "
+printf "%s\n" "Partition    Timelimit   CPU model     CPUs/ NUMA   GPU model          Memory(MB)/ State  Nodes Nodelist                      "
+printf "%s\n" "                                       node  D:C:T                     node                                                   "
 printf "%s\n" "------------ ----------- ------------- ----- ------ ------------------ ----------- ------ ----- ------------------------------"
 
 if [[ $partitions = "" ]]; then
