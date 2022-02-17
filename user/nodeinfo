@@ -37,6 +37,17 @@ help() {
     printf "%s\n" "  nodeinfo -p main,gpu -s idle,mix"
 }
 
+summarize() {
+    # Summarize partition status
+    printf "%s\n" "--------------------------------------------------------------------"
+    printf "%s\n" "Partition    Timelimit   Status Nodes by state  CPUs by state       "
+    printf "%s\n" "                                A/I/O/Total     A/I/O/Total         "
+    printf "%s\n" "------------ ----------- ------ --------------- --------------------"
+    sinfo -h -s -o "%12P %11l %6a %15F %20C"
+    printf "%s\n" "------------"
+    printf "%s\n" "A = allocated or mixed; I = idle; O = other"
+}
+
 # Set default values for option arguments
 states=all
 partitions=
@@ -44,10 +55,14 @@ partitions=
 # See if statement below
 
 # Define options
-while getopts ":hp:s:" option; do
-   case $option in
+while getopts ":hzp:s:" option; do
+    case $option in
       h) # display help
          help
+         exit 0
+         ;;
+      z) # summarize partition status
+         summarize
          exit 0
          ;;
       p) # select partitions
@@ -68,7 +83,7 @@ while getopts ":hp:s:" option; do
          printf "%s\n" "Error: Invalid option -$OPTARG" >&2
          exit 1
          ;;
-   esac
+    esac
 done
 
 printf "%s\n" "------------------------------------------------------------------------------------------------------------------------------"
