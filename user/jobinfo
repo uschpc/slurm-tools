@@ -105,23 +105,18 @@ def str_set(x=None):
     return set([x])
 
 def gpu_str(s=None):
+    # Pending job
+    if s is '':
+        return str("--")
     # No GPUs requested
     if s is None or "gres/gpu" not in s.lower():
         return 0
     # GPUs requested
-    # sacct returns two values for AllocTRES
-    # One for <job_id> and one for <job_id>.batch or <job_id>.interactive
-    # The total number of GPUs requested is found in the first value
-    # If a specific GPU type is not requested, then a GPU type is
-    # only found in the second value, but currently it is not accurate
     # Number of GPUs requested
     g = re.match(r".*gres/gpu=(?P<num_gpus>\d+)", s.lower())
     g_str = g.group('num_gpus')
+    # Type of GPU requested
     t = re.match(r".*gres/gpu:(?P<gpu_type>\w\d+)", s.lower())
-    # Specific GPU type is not requested
-    if t is None:
-        return g_str
-    # Specific GPU type is requested
     t_str = t.group('gpu_type')
     return g_str + " (" + t_str + ")"
 
