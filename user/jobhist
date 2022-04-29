@@ -29,7 +29,7 @@ else
 fi
 
 # Set sacct format
-format=start%10,jobid%13,jobname%12,partition,state,elapsed%11,nnodes%5,ncpus%4,reqmem%8,alloctres%-50
+format=start%10,jobid%13,jobname%12,partition,state,elapsed%11,nnodes%5,ncpus%4,reqmem%8,reqtres%-50
 
 printf "%s\n" "------------------------------------------------------------------------------------------------"
 printf "%s\n" " Startdate        Job ID     Job Name  Partition      State     Elapsed Nodes CPUs   Memory GPUs"
