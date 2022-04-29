@@ -6,7 +6,7 @@ set -eu -o pipefail
 
 help() {
     # Display help information
-    printf "%s\n" "cqueue / Display queue information"
+    printf "%s\n" "cqueue / Display job queue information"
     printf "%s\n" ""
     printf "%s\n" "Usage: cqueue [-h] [-p <partition>] [-u <username>]"
     printf "%s\n" ""
