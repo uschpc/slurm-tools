@@ -1,4 +1,4 @@
-#!/bin/env python2
+#!/usr/bin/env python2
 
 # jobinfo
 
@@ -87,7 +87,8 @@ def totalmem(x, meta):
         creq = mem_to_kb(req)
         return creq * int(meta.NNodes)
     else:
-        return "??"
+        creq = mem_to_kb(x)
+        return creq
 
 def whoami():
     import pwd
