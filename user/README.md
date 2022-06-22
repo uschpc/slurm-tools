@@ -142,3 +142,35 @@ oneweek      7-00:00:00  xeon-2640v3   16    63400       (null)             idle
 largemem     7-00:00:00  epyc-7513     64    1024000     (null)             mix    2     a02-10,a04-10
 largemem     7-00:00:00  epyc-7513     64    1024000     (null)             idle   2     a01-10,a03-10
 ```
+
+## gpuinfo
+
+Display GPU information for cluster.
+
+```
+$ gpuinfo -p gpu
+------------------------------------------------
+Slurm GPU information
+------------------------------------------------
+There are a total of 182 GPUs [up]
+24 a100 gpus
+24 a40 gpus
+58 v100 gpus
+76 p100 gpus
+------------------------------------------------
+There are a total of 182 GPUs [accessible]
+24 a100 gpus
+24 a40 gpus
+58 v100 gpus
+76 p100 gpus
+------------------------------------------------
+Usage by user:
+ttrojan   [total: 8  (interactive: 0 )] a100: 8
+------------------------------------------------
+There are 174 GPUs available:
+a100: 16 available
+a40: 24 available
+v100: 58 available
+p100: 76 available
+------------------------------------------------
+```
