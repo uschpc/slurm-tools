@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+# mypartitions
+
+# Display allowed partitions based on user's Slurm accounts
+
+set -e -o pipefail
+
+if [[ -z $1 ]]; then
+    user=$USER
+else
+    user=$1
+fi
+
+if [[ $HOSTNAME == *"discovery"* ]]; then
+    printf "%s\n" "-----------------------------------------------------"
+    printf "%s\n" "Allowed Discovery partitions for $user"
+    printf "%s\n" "-----------------------------------------------------"
+    scontrol show partition -o |
+        grep -o "^PartitionName=[a-z 0-9 \-]*"
+elif [[ $HOSTNAME == *"endeavour"* ]]; then
+    printf "%s\n" "-----------------------------------------------------"
+    printf "%s\n" "Allowed Endeavour partitions for $user"
+    printf "%s\n" "-----------------------------------------------------"
+    accounts=$(sshare -u $user -UnP -o "Account" | sed -z 's/\n/\\|/g')
+    scontrol show partition -o |
+        grep "$accounts::-2\|shared" |
+        grep -oP "^PartitionName=.*(?=AllowQos)" |
+        sed -e 's/AllowGroups=ALL //'
+else
+    exit 1
+fi

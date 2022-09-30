@@ -174,6 +174,47 @@ Max disk write       : 1.04M
 Max disk read        : 14.42M
 ```
 
+### myaccount
+
+Display Slurm account information for user.
+
+```
+$ myaccount
+----------------------------------------------------------------
+Project accounts
+----------------------------------------------------------------
+User       Account         Cluster    Def Acct        QOS
+---------- --------------- ---------- --------------- ----------
+ttrojan    ttrojan_123     discovery  ttrojan_123     normal
+ttrojan    ttrojan_123     condo      ttrojan_123     normal
+
+-----------------------------------------------------
+Discovery compute allocations
+-----------------------------------------------------
+Account          Limit              Usage
+---------------  -----------------  -----------------
+ttrojan_123      billing=12000000   billing=176254
+
+-----------------------------------------------------
+Allowed Endeavour partitions for ttrojan
+-----------------------------------------------------
+PartitionName=trojan AllowAccounts=ttrojan_123,hpcroot
+PartitionName=shared AllowAccounts=ALL
+```
+
+### mypartitions
+
+Display allowed partitions based on user's Slurm accounts.
+
+```
+$ mypartitions
+-----------------------------------------------------
+Allowed Endeavour partitions for ttrojan
+-----------------------------------------------------
+PartitionName=trojan AllowAccounts=ttrojan_123,hpcroot
+PartitionName=shared AllowAccounts=ALL
+```
+
 ## License
 
 [MIT](LICENSE) (unless otherwise noted)

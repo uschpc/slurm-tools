@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+# myaccount
+
+# Display Slurm account information for user
+
+set -e -o pipefail
+
+if [[ -z $1 ]]; then
+    user=$USER
+else
+    user=$1
+fi
+
+# Display table of Discovery and Endeavour accounts
+printf "%s\n" "----------------------------------------------------------------"
+printf "%s\n" "Project accounts"
+printf "%s\n" "----------------------------------------------------------------"
+printf "%s\n" "User       Account         Cluster    Def Acct        QOS"
+printf "%s\n" "---------- --------------- ---------- --------------- ----------"
+sacctmgr list user $user -n -s cluster=discovery,condo format=user%-10,account%-15,cluster%-10,defaultaccount%-15,qos%-10
+printf "%s\n" ""
+
+set +e
+
+# Collect Discovery accounts in array
+accounts=()
+for i in $(sacctmgr list user $user -n -s cluster=discovery format=account%20d); do
+    accounts+=($i)
+done
+
+# Collect billing limits for each Discovery account in array
+limits=()
+for i in ${accounts[@]}; do
+    tmp=$(sshare -n -M discovery -o grptresmins -A $i | grep -m 1 -o "billing=[0-9]*")
+    if [[ $tmp == "" ]]; then
+        limits+=("inactive") # expired or unlimited
+    else
+        limits+=($tmp)
+    fi
+done
+
+# Collect current total usage for each Discovery account in array
+usage=()
+for i in ${accounts[@]}; do
+    usage+=($(sshare -n -M discovery -o grptresraw%100 -A $i | grep -m 1 -o "billing=[0-9]*"))
+done
+
+# Display table of Discovery account limits and usage
+printf "%s\n" "-----------------------------------------------------"
+printf "%s\n" "Discovery compute allocations"
+printf "%s\n" "-----------------------------------------------------"
+paste <(printf "%s\n" "Account" "---------------" ${accounts[@]}) \
+      <(printf "%s\n" "Limit" "-----------------" ${limits[@]}) \
+      <(printf "%s\n" "Usage" "-----------------" ${usage[@]}) |
+      column -ts $'\t'
+
+# Display allowed partitions on Endeavour
+if [[ $HOSTNAME == *"endeavour"* ]]; then
+    printf "%s\n" ""
+    mypartitions $user
+fi
