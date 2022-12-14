@@ -2,7 +2,9 @@
 
 # gpuinfo
 
-# Display GPU information for cluster
+# Display GPU information for Slurm cluster
+# Based on output from sinfo, squeue, and scontrol
+# Modified from slurm_gpustat program found at https://github.com/albanie/slurm_gpustat
 
 import re
 import argparse
@@ -194,12 +196,15 @@ def in_use(resources: dict = None, partition: Optional[str] = None):
         aggregates[user]['bash_gpu'] = {key: sum([x['bash_gpu'] for x in val.values()])
                                         for key, val in subdict.items()}
     print("Usage by user:")
-    for user, subdict in sorted(aggregates.items(),
-                                key=lambda x: sum(x[1]['n_gpu'].values())):
-        total = (f"total: {str(sum(subdict['n_gpu'].values())):2s} "
-                 f"(interactive: {str(sum(subdict['bash_gpu'].values())):2s})")
-        summary_str = ", ".join([f"{key}: {val}" for key, val in subdict['n_gpu'].items()])
-        print(f"{user:10s} [{total}] {summary_str}")
+    if not aggregates:
+        print("None")
+    else:
+        for user, subdict in sorted(aggregates.items(),
+                                    key=lambda x: sum(x[1]['n_gpu'].values())):
+            total = (f"total: {str(sum(subdict['n_gpu'].values())):2s} "
+                     f"(interactive: {str(sum(subdict['bash_gpu'].values())):2s})")
+            summary_str = ", ".join([f"{key}: {val}" for key, val in subdict['n_gpu'].items()])
+            print(f"{user:10s} [{total}] {summary_str}")
 
 @functools.lru_cache(maxsize=64, typed=True)
 def occupancy_stats_for_node(node: str) -> dict:
@@ -213,7 +218,6 @@ def occupancy_stats_for_node(node: str) -> dict:
                 row = row.replace(f"{key}=", "")
                 tokens = row.split(",")
                 if tokens == [""]:
-                    print(f"Missing information for {node}: {key}, skipping....")
                     metrics[key] = {}
                 else:
                     metrics[key] = {x.split("=")[0]: x.split("=")[1] for x in tokens}
@@ -244,7 +248,7 @@ def available(
                 res[node_name][resource_idx]["count"] = count
     by_type = resource_by_type(res)
     total = sum(x["count"] for sublist in by_type.values() for x in sublist)
-    print(f"There are {total} GPUs available:")
+    print(f"There are a total of {total} GPUs [available]")
     for key, counts_for_gpu_type in by_type.items():
         gpu_count = sum(x["count"] for x in counts_for_gpu_type)
         tail = ""
