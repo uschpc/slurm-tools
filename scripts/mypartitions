@@ -28,10 +28,14 @@ elif [[ $HOSTNAME == *"endeavour"* ]]; then
     printf "%s\n" "Allowed Endeavour partitions for $user"
     printf "%s\n" "-----------------------------------------------------"
     accounts=$(sshare -u $user -UnP -o "Account" | sed -z 's/\n/\\|/g')
-    scontrol show partition -o |
-        grep "$accounts::-2\|shared" |
-        grep -oP "^PartitionName=.*(?=AllowQos)" |
-        sed -e 's/AllowGroups=ALL //'
+    if [[ "$accounts" = "" ]]; then
+        printf "%s\n" "None"
+    else
+        scontrol show partition -o |
+            grep "$accounts::-2\|shared" |
+            grep -oP "^PartitionName=.*(?=AllowQos)" |
+            sed -e 's/AllowGroups=ALL //'
+    fi
 else
     exit 1
 fi
