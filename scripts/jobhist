@@ -28,7 +28,7 @@ else
     user=$2
     # Check if user exists
     if [[ "$(id $user 2>&1)" = *"no such user"* ]]; then
-        printf "%s%s\n" "No such user: " "$user"
+        printf "%s\n" "No such user: $user"
         exit 1
     fi
 fi
