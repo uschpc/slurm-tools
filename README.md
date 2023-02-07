@@ -1,6 +1,6 @@
 # Slurm tools
 
-A collection of various Slurm tools used by USC CARC.
+A collection of various Slurm tools used on CARC HPC clusters.
 
 ## Installation
 
@@ -213,6 +213,25 @@ Allowed Endeavour partitions for ttrojan
 -----------------------------------------------------
 PartitionName=trojan AllowAccounts=ttrojan_123,hpcroot
 PartitionName=shared AllowAccounts=ALL
+```
+
+### acctusage
+
+Report Slurm account usage by users or accounts.
+
+```
+$ acctusage
+--------------------------------------------------------------------
+Slurm account usage from 2023-01-30 to 2023-02-06
+--------------------------------------------------------------------
+     User         Account   Cluster       Resource             Usage
+--------- --------------- --------- -------------- -----------------
+  ttrojan     ttrojan_123 discovery            cpu           3158
+  ttrojan     ttrojan_123 discovery       gres/gpu             52
+  ttrojan     ttrojan_123 discovery            mem       12324573
+  ttrojan     ttrojan_123 discovery        billing           6230
+--------------------------------------------------------------------
+*CPU/GPU usage in minutes
 ```
 
 ## License
