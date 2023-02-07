@@ -68,15 +68,15 @@ while getopts ":hzp:s:" option; do
       p) # select partitions
          partitions="$OPTARG"
          if [[ $partitions =~ ^- ]]; then
-           printf "%s\n" "Error: Invalid argument to option -p"
-           exit 1
+             printf "%s\n" "Error: Invalid argument to option -p"
+             exit 1
          fi
          ;;
       s) # select node states
          states="$OPTARG"
          if [[ $states =~ ^- ]]; then
-           printf "%s\n" "Error: Invalid argument to option -s"
-           exit 1
+             printf "%s\n" "Error: Invalid argument to option -s"
+             exit 1
          fi
          ;;
       \?) # invalid argument
