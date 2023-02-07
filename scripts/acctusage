@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+
+# acctusage
+
+set -eu -o pipefail
+
+help() {
+    # Display help information
+    printf "%s\n" "acctusage / Report Slurm account usage by users or accounts"
+    printf "%s\n" ""
+    printf "%s\n" "Usage: acctusage [-h] [-u <users>] [-a <accounts>] [-s <startdate>] [-e <enddate>]"
+    printf "%s\n" ""
+    printf "%s\n" "Options:"
+    printf "%s\n" ""
+    printf "%s\n" "-h  Display help"
+    printf "%s\n" ""
+    printf "%s\n" "-u  Specify users"
+    printf "%s\n" ""
+    printf "%s\n" "    * When only using users option, default value is current user"
+    printf "%s\n" "    * When only using accounts option, default value is all users in accounts"
+    printf "%s\n" "    * Multiple users can be specified with comma separation"
+    printf "%s\n" ""
+    printf "%s\n" "-a  Specify project accounts"
+    printf "%s\n" ""
+    printf "%s\n" "    * When only using users option, default value is all accounts"
+    printf "%s\n" "    * When only using accounts option, default value is all users in accounts"
+    printf "%s\n" "    * Multiple accounts can be specified with comma separation"
+    printf "%s\n" ""
+    printf "%s\n" "-s  Specify start date/time"
+    printf "%s\n" ""
+    printf "%s\n" "    * Default value is 7 days ago"
+    printf "%s\n" ""
+    printf "%s\n" "-e  Specify end date/time"
+    printf "%s\n" ""
+    printf "%s\n" "    * Default value is current date"
+    printf "%s\n" ""
+    printf "%s\n" "Examples:"
+    printf "%s\n" ""
+    printf "%s\n" "  acctusage"
+    printf "%s\n" "  acctusage -h"
+    printf "%s\n" "  acctusage -s 2023-01-01"
+    printf "%s\n" "  acctusage -u ttrojan"
+    printf "%s\n" "  acctusage -u ttrojan -s 2023-01-01"
+    printf "%s\n" "  acctusage -u ttrojan -a ttrojan_123"
+    printf "%s\n" "  acctusage -a ttrojan_123"
+    printf "%s\n" "  acctusage -a ttrojan_123 -s 2023-01-01 -e 2023-01-31"
+}
+
+# Set default values for option arguments
+users=
+accounts=
+startdate=$(date --date="-7 day" +%Y-%m-%d)
+enddate=$(date +%Y-%m-%d)
+
+# Define options
+while getopts ":hu:a:s:e:" option; do
+    case $option in
+      h) # display help
+         help
+         exit 0
+         ;;
+      u) # select users
+         users="$OPTARG"
+         if [[ $users =~ ^- ]]; then
+             printf "%s\n" "Error: Invalid argument to option -u"
+             exit 1
+         fi
+         ;;
+      a) # select accounts
+         accounts="$OPTARG"
+         if [[ $accounts =~ ^- ]]; then
+             printf "%s\n" "Error: Invalid argument to option -a"
+             exit 1
+         fi
+         ;;
+      s) # select startdate
+         startdate="$OPTARG"
+         if [[ $startdate =~ ^- ]]; then
+             printf "%s\n" "Error: Invalid argument to option -s"
+             exit 1
+         fi
+         ;;
+      e) # select enddate
+         enddate="$OPTARG"
+         if [[ $enddate =~ ^- ]]; then
+             printf "%s\n" "Error: Invalid argument to option -e"
+             exit 1
+         fi
+         ;;
+      \?) # invalid argument
+         printf "%s\n" "Error: Invalid option -$OPTARG" >&2
+         exit 1
+         ;;
+    esac
+done
+
+# Set output format
+format=login,accounts,cluster,tresname,used
+
+# Set TRES to display
+tres=cpu,gres/gpu,mem,billing
+
+printf "%s\n" "--------------------------------------------------------------------"
+printf "%s\n" "Slurm account usage from $startdate to $enddate"
+printf "%s\n" "--------------------------------------------------------------------"
+printf "%s\n" "     User         Account   Cluster       Resource             Usage"
+printf "%s\n" "--------- --------------- --------- -------------- -----------------"
+if [[ $users = "" && $accounts = "" ]]; then
+    sreport cluster accountutilizationbyuser -n -a users=$USER start=$startdate end=$enddate format=$format --tres=$tres
+elif [[ $accounts = "" ]]; then
+    sreport cluster accountutilizationbyuser -n -a users=$users start=$startdate end=$enddate format=$format --tres=$tres
+elif [[ $users = "" ]]; then
+    sreport cluster userutilizationbyaccount -n -a accounts=$accounts start=$startdate end=$enddate format=$format --tres=$tres
+else
+    sreport cluster userutilizationbyaccount -n -a users=$users accounts=$accounts start=$startdate end=$enddate format=$format --tres=$tres
+fi
+printf "%s\n" "--------------------------------------------------------------------"
+printf "%s\n" "*CPU/GPU usage in minutes"
