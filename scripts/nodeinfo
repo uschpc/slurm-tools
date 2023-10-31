@@ -43,7 +43,7 @@ summarize() {
     printf "%s\n" "Partition    Timelimit   Status Nodes by state  CPUs by state       "
     printf "%s\n" "                                A/I/O/Total     A/I/O/Total         "
     printf "%s\n" "------------ ----------- ------ --------------- --------------------"
-    sinfo -h -s -o "%12P %11l %6a %15F %20C"
+    sinfo -h -o "%12P %11l %6a %15F %20C"
     printf "%s\n" "------------"
     printf "%s\n" "A = allocated or mixed; I = idle; O = other"
 }
