@@ -9,9 +9,13 @@
 # Based on output from sacct, sstat, and squeue
 # Modified from jobinfo script found at https://github.com/birc-aeh/slurm-utils
 
+# Notes
+
+# Starting with Slurm v23.02, the sacct field "reserved" was renamed to "planned"
+
 # MIT License
 
-# Copyright (c) 2021-2022 USC Center for Advanced Research Computing
+# Copyright (c) 2021-2023 USC Center for Advanced Research Computing
 # Copyright (c) 2015-2021 Anders Halager
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -199,7 +203,7 @@ def f_memeff(x, meta):
     return "%5.2f%%" % (max / creq * 100)
 
 def f_time(x, meta):
-    all_times = [meta.timelimit, meta.elapsed, meta.TotalCPU, meta.reserved]
+    all_times = [meta.timelimit, meta.elapsed, meta.TotalCPU, meta.planned]
     max_time_len = max(len(without_fraction(y)) for y in all_times)
     ss, mm, hh, dd = parse_time(x)
     if dd > 0:
@@ -257,7 +261,7 @@ FIELDS = [
         Field("Submit",        str,        keep_first,   show,  False,  f_str,     "Submit time"),
         Field("start",         date_str,   min,          show,  False,  f_date,    "Start time"),
         Field("end",           str,        time_max,     show,  False,  f_date,    "End time"),
-        Field("reserved",      date_str,   min,          show,  False,  f_time,    "Wait time"),
+        Field("planned",       date_str,   min,          show,  False,  f_time,    "Wait time"),
         Field("timelimit",     str,        time_max,     show,  False,  f_time,    "Reserved walltime"),
         Field("elapsed",       str,        time_max,     show,  False,  f_time,    "Used walltime"),
         Field("CPUTime",       str,        keep_first,   show,  False,  f_time,    "Used CPU walltime"),
