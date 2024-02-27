@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+
+"""
+myaccount
+
+View account information for user
+
+This script requires:
+  - Python 3.7 or higher (for the subprocess.run options)
+  - Slurm (any recent version should work)
+  - Slurm configured with:
+    - PriorityType=priority/multifactor
+
+Notes:
+  - Based on output from sacctmgr, sshare, and scontrol
+"""
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+
+# Set up arguments and options
+parser = argparse.ArgumentParser(
+    prog = "myaccount",
+    formatter_class = argparse.RawDescriptionHelpFormatter,
+    description = "View account information for user",
+    epilog = """\
+examples:
+
+myaccount
+myaccount ttrojan
+
+support:
+
+https://github.com/uschpc/slurm-tools/issues"""
+)
+parser.add_argument(
+    "user",
+    nargs = "?",
+    default = os.environ["USER"],
+    help = "user to query for account information (default = $USER)"
+)
+parser.add_argument(
+    "-V",
+    "--version",
+    action = "store_true",
+    help = "print version"
+)
+args = parser.parse_args()
+
+if args.version:
+    print("myaccount 1.0.0")
+    sys.exit(0)
+
+# Display table of Discovery and Endeavour accounts
+print("----------------------------------------------------------------")
+print("Project accounts                                                ")
+print("----------------------------------------------------------------")
+print("User       Account         Cluster    Default         QOS       ")
+print("---------- --------------- ---------- --------------- ----------")
+fmt = "format=user%-10,account%-15,cluster%-10,defaultaccount%-15,qos%-10"
+cmd = ["sacctmgr", "-n", "-s", "list", "user", args.user, fmt, "cluster=discovery,condo"]
+proc = subprocess.run(cmd, capture_output = True, text = True)
+out = proc.stdout.split("\n")[:-1]
+for line in out:
+    print(line)
+print("")
+
+# Display table of Discovery account limits and usage
+print("--------------------------------------------------")
+print("Discovery account system units (SUs)              ")
+print("--------------------------------------------------")
+print("Account           Limit      Usage      Remaining ")
+print("----------------- ---------- ---------- ----------")
+discovery = [line.split()[1] for line in out if "discovery" in line]
+if not discovery:
+    print("None")
+else:
+    fmt2 = "account,grptresmins,grptresraw"
+    cmd2 = ["sshare", "-P", "-o", fmt2, "-M", "discovery"]
+    proc2 = subprocess.run(cmd2, capture_output = True, text = True)
+    out2 = proc2.stdout.split("\n")
+    for account in discovery:
+        sub = [i for i in out2 if re.search(account, i)]
+        sub = sub[0].split("|")[1:3]
+        res = [re.search(r"billing=([0-9]+)", i) for i in sub]
+        if res[0] is not None and res[1] is not None:
+            limit = res[0].group(1)
+            usage = res[1].group(1)
+            remaining = str(int(limit) - int(usage))
+        elif res[1] is not None:
+            limit = "n/a"
+            usage = res[1].group(1)
+            remaining = "n/a"
+        else:
+            limit = "n/a"
+            usage = "n/a"
+            remaining = "n/a"
+        print(f"{account[:17]:<17}" + " " +
+              f"{limit[:10]:<10}" + " " +
+              f"{usage[:10]:<10}" + " " +
+              f"{remaining[:10]:<10}")
+    print("--------------------------------------------------")
+    print("Usage based on resources reserved                 ")
+    print("--------------------------------------------------")
+    print("1 CPU/minute              : 1 SU")
+    print("4 GB of memory/minute     : 1 SU")
+    print("1 A100 or A40 GPU/minute  : 8 SUs")
+    print("1 V100 or P100 GPU/minute : 4 SUs")
+    print("1 K40 GPU/minute          : 2 SUs")
+
+# Display allowed partitions on Endeavour
+if "endeavour" in os.environ["HOSTNAME"]:
+    print("")
+    print("----------------------------------------------------------------")
+    print("Allowed Endeavour partitions                                    ")
+    print("----------------------------------------------------------------")
+    print("Partition      Accounts                                         ")
+    print("-------------- -------------------------------------------------")
+    endeavour = [line.split()[1] for line in out if "condo" in line]
+    if not endeavour:
+        print("None")
+    else:
+        endeavour = "|".join(endeavour)
+        cmd3 = ["scontrol", "-o", "show", "partitions"]
+        proc3 = subprocess.run(cmd3, capture_output = True, text = True)
+        out3 = proc3.stdout.split("\n")[:-1]
+        sub = [i for i in out3 if re.search(endeavour + "|AllowAccounts=ALL", i)]
+        partitions = [re.search(r"PartitionName=([a-zA-Z0-9-_]+)", i).group(1) for i in sub]
+        allowed = [re.search(r"AllowAccounts=([a-zA-Z0-9-_,]+)", i).group(1) for i in sub]
+        for i, partition in enumerate(partitions):
+            print(f"{partition[:14]:<14}" + " " +
+                  f"{allowed[i]}")

@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+
+"""
+jobhist
+
+View compact history of user's jobs
+
+This script requires:
+  - Python 3.5 or higher (for the subprocess.run command)
+  - Slurm (any recent version should work)
+
+Notes:
+  - Based on output from sacct
+  - Default settings are job history for past 7 days for $USER
+"""
+
+from datetime import datetime, timedelta
+import argparse
+import os
+import subprocess
+import sys
+
+# Set up arguments and options
+parser = argparse.ArgumentParser(
+    prog = "jobhist",
+    formatter_class = argparse.RawDescriptionHelpFormatter,
+    description = "View compact history of user's jobs",
+    epilog = """\
+examples:
+
+jobhist
+jobhist 30
+jobhist 14 ttrojan
+jobhist -p largemem
+jobhist 30 -p epyc-64
+jobhist 14 ttrojan -p main
+
+notes:
+
+to view job details, run jobinfo <jobid>
+
+support:
+
+https://github.com/uschpc/slurm-tools/issues"""
+)
+parser.add_argument(
+    "days",
+    nargs = "?",
+    type = int,
+    default = 7,
+    help = "days to include in history (default = 7)"
+)
+parser.add_argument(
+    "user",
+    nargs = "?",
+    default = os.environ["USER"],
+    help = "user to query for history (default = $USER)"
+)
+parser.add_argument(
+    "-p",
+    "--partition",
+    help = "filter by partition (comma-separated list)"
+)
+parser.add_argument(
+    "-V",
+    "--version",
+    action = "store_true",
+    help = "print version"
+)
+args = parser.parse_args()
+
+if args.version:
+    print("jobhist 1.0.0")
+    sys.exit(0)
+
+print("-----------------------------------------------------------------------------------------")
+print("Startdate         Job ID     Job Name  Partition      State     Elapsed Nodes CPUs Memory")
+print("---------- ------------- ------------ ---------- ---------- ----------- ----- ---- ------")
+date = datetime.today() - timedelta(days = args.days)
+date = date.strftime("%Y-%m-%d")
+fmt = "start%10,jobid%13,jobname%12,partition,state,elapsed%11,nnodes%5,reqcpus%4,reqmem%6"
+cmd = ["sacct", "-n", "-X", "-o", fmt, "-u", args.user, "-S", date]
+if args.partition:
+    cmd = cmd + ["-r", args.partition]
+subprocess.run(cmd)

@@ -1,0 +1,411 @@
+#!/usr/bin/env python3
+
+"""
+jobinfo
+
+View detailed job information
+
+This script requires:
+  - Python 3.7 or higher (for the subprocess.run options)
+  - Slurm 23.02 or higher (for the sacct field "planned")
+  - Slurm configured with:
+    - GresTypes=gpu
+    - AccountingStorageTRES=gres/gpu
+
+Notes:
+  - Based on output from sacct, sstat, and squeue
+  - Starting with Slurm 23.02, the sacct field "reserved" was renamed to "planned"
+"""
+
+"""
+Modified from jobinfo script found at https://github.com/birc-aeh/slurm-utils
+
+The MIT License (MIT)
+
+Copyright (c) 2015-2021 Anders Halager
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+
+from collections import namedtuple
+import argparse
+import math
+import os
+import re
+import subprocess
+import sys
+
+# Set up arguments and options
+parser = argparse.ArgumentParser(
+    prog = "jobinfo",
+    formatter_class = argparse.RawDescriptionHelpFormatter,
+    description = "View detailed job information",
+    epilog = """\
+examples:
+
+jobinfo 123456
+jobinfo $SLURM_JOB_ID
+
+notes:
+
+to find job IDs, run jobhist
+
+support:
+
+https://github.com/uschpc/slurm-tools/issues"""
+)
+parser.add_argument(
+    "jobid",
+    nargs = "?",
+    help = "job ID to query"
+)
+parser.add_argument(
+    "-V",
+    "--version",
+    action = "store_true",
+    help = "print version"
+)
+args = parser.parse_args()
+
+if args.version:
+    print("jobinfo 1.0.0")
+    sys.exit(0)
+
+if args.jobid is None:
+    print("usage: jobinfo [-h] [-V] [jobid]", file = sys.stderr)
+    print("jobinfo: error: argument jobid: none provided", file = sys.stderr)
+    print("to find job IDs, run jobhist", file = sys.stderr)
+    sys.exit(1)
+
+# Define utilities
+
+def parse_time(t):
+    # Format: dd-hh:mm:ss
+    time_parts = re.compile(r"(((?P<days>\d+)-)?(?P<hours>\d\d):)?"
+                            + r"(?P<minutes>\d\d):(?P<seconds>\d\d(\.\d+)?)")
+    m = time_parts.match(t)
+    if m is None:
+        return 0.0, 0, 0, 0
+    ss = float(m.group("seconds"))
+    mm = int(m.group("minutes"))
+    hh = int(m.group("hours") or "0")
+    dd = int(m.group("days") or "0")
+    return ss, mm, hh, dd
+
+def elapsed_to_seconds(elapsed):
+    ss, mm, hh, dd = parse_time(elapsed)
+    return dd*24*60*60 + hh*60*60 + mm*60 + ss
+
+def format_bs(x):
+    postfix = " KMGTPE"
+    e = int(math.log(x + 1, 2) / 10)
+    return f"{x / 2**(10 * e):.2f}" + postfix[e]
+
+def mem_to_kb(x):
+    if x.endswith("T"):
+        req = float(x[:-1])
+        return req * 1024 * 1024 * 1024
+    if x.endswith("G"):
+        req = float(x[:-1])
+        return req * 1024 * 1024
+    if x.endswith("M"):
+        req = float(x[:-1])
+        return req * 1024
+    if x.endswith("K"):
+        req = float(x[:-1])
+        return req
+    return "??"
+
+def totalmem(x, meta):
+    if x.endswith("c"):
+        req = str(x[:-1])
+        creq = mem_to_kb(req)
+        return creq * int(meta.ncpus)
+    if x.endswith("n"):
+        req = str(x[:-1])
+        creq = mem_to_kb(req)
+        return creq * int(meta.NNodes)
+    creq = mem_to_kb(x)
+    return creq
+
+def without_fraction(s):
+    return "." in s and s[:s.rfind(".")] or s
+
+# Define constructors
+
+def str_set(x=None):
+    if x in [None, ""]:
+        return set()
+    return set([x])
+
+def gpu_str(s=None):
+    # Pending job
+    if s == "":
+        return str("--")
+    # No GPUs allocated
+    if s is None or "gres/gpu" not in s.lower():
+        return 0
+    # Number of GPUs allocated
+    g = re.match(r".*gres/gpu=(?P<num_gpus>\d+)", s.lower())
+    num_gpus = g.group("num_gpus")
+    # Type of GPU allocated
+    t = re.match(r".*gres/gpu:(?P<gpu_type>\w\d+)", s.lower())
+    if t is None:
+        return num_gpus
+    gpu_type = t.group("gpu_type")
+    return f"{num_gpus} ({gpu_type})"
+
+def byte_size(s=None):
+    if s in [None, "", "16?"]:
+        return -1.0
+    m = {"K": 10, "M": 20, "G": 30, "T": 40, "P": 50, "E": 60}
+    scale = 2**m.get(s[-1], 0)
+    if scale != 1:
+        s = s[:-1]
+    return scale * float(s)
+
+def date_str(s=None):
+    if s is None or s.strip() == "":
+        return "9999-01-01T00:00:00"
+    return s
+
+# Define combinators
+
+def keep_first(a, b):
+    return a == "" and b or a
+
+def time_max(a, b):
+    if "UNLIMITED" in [a, b]:
+        return "UNLIMITED"
+    if a in ["", "INVALID"]:
+        return b
+    if b in ["", "INVALID"]:
+        return a
+    return max(a, b)
+
+# Define formatters
+
+def f_tasks(x, meta):
+    if not x:
+        return "--"
+    return str(x)
+
+def f_drw(x, meta):
+    if x < 0:
+        return "--"
+    return format_bs(x)
+
+def f_cpu(x, meta):
+    total = elapsed_to_seconds(meta.TotalCPU)
+    if total == 0:
+        return "--"
+    xs = elapsed_to_seconds(x)
+    return f"{xs / total * 100:5.2f}%"
+
+def f_cpueff(x, meta):
+    total = elapsed_to_seconds(meta.TotalCPU)
+    xint = int(x)
+    if xint == 0 or total == 0:
+        return "--"
+    return f"{total / xint * 100:5.2f}%"
+
+def f_mem(x, meta):
+    if x.endswith("c"):
+        return f"{x[:-1]}/core"
+    if x.endswith("n"):
+        return f"{x[:-1]}/node"
+    return x
+
+def f_rss(x, meta):
+    if x < 0:
+        return "--"
+    totalx = x * int(meta.NTasks)
+    return f"{format_bs(totalx)} (estimate)"
+
+def f_memeff(x, meta):
+    if x < 0:
+        return "--"
+    maxmem = x / 1024 * int(meta.NTasks)
+    req = str(meta.ReqMem)
+    creq = totalmem(req, meta)
+    if str(creq).endswith("?"):
+        return "??"
+    return f"{maxmem / creq * 100:5.2f}%"
+
+def f_time(x, meta):
+    all_times = [meta.timelimit, meta.elapsed, meta.TotalCPU, meta.planned]
+    max_time_len = max(len(without_fraction(y)) for y in all_times)
+    ss, mm, hh, dd = parse_time(x)
+    if dd > 0:
+        dd = f"{dd}-"
+    else:
+        dd = ""
+    res = f"{dd}{hh:02d}:{mm:02d}:{int(ss):02d}"
+    if res.strip() == "00:00:00" and meta.start.lower() == "unknown":
+        return "--"
+    return res.rjust(max_time_len)
+
+def f_str(x, meta):
+    return str(x)
+
+def f_date(x, meta):
+    if str(x).lower() == "unknown":
+        return "--"
+    return str(x)
+
+def f_exit(x, meta):
+    if meta.end.lower() == "unknown":
+        return "--"
+    return x
+
+def f_state(states, meta):
+    if len(states) > 1:
+        states = states - set(["COMPLETED", ""])
+    reason = meta.reason
+    if reason != "":
+        reason = " " + reason
+    deps = meta.dependencies
+    if deps != "":
+        deps = f" ({deps})"
+    return ",".join(states) + reason + deps
+
+# Define fields and how they will be processed
+
+hide, show = False, True
+Field = namedtuple("Field", "name ctor combinator shown prefer_sstat formatter desc")
+FIELDS = [
+    Field("JobID",         str,        keep_first,   show,  False,  f_str,     "Job ID"),
+    Field("JobName",       str,        keep_first,   show,  False,  f_str,     "Job name"),
+    Field("User",          str,        keep_first,   show,  False,  f_str,     "User"),
+    Field("Account",       str,        keep_first,   show,  False,  f_str,     "Account"),
+    Field("WorkDir",       str,        keep_first,   show,  False,  f_str,     "Working directory"),
+    Field("Cluster",       str,        keep_first,   show,  False,  f_str,     "Cluster"),
+    Field("Partition",     str,        keep_first,   show,  False,  f_str,     "Partition"),
+    Field("NNodes",        str,        keep_first,   show,  False,  f_str,     "Nodes"),
+    Field("NodeList",      str,        keep_first,   show,  False,  f_str,     "Nodelist"),
+    Field("NTasks",        str,        max,          show,  False,  f_tasks,   "Tasks"),
+    Field("ncpus",         int,        max,          show,  False,  f_str,     "CPUs"),
+    Field("AllocTRES",     gpu_str,    keep_first,   show,  False,  f_str,     "GPUs"),
+    Field("State",         str_set,    set.union,    show,  False,  f_state,   "State"),
+    Field("ExitCode",      str,        keep_first,   show,  False,  f_exit,    "Exit code"),
+    Field("Submit",        str,        keep_first,   show,  False,  f_str,     "Submit time"),
+    Field("start",         date_str,   min,          show,  False,  f_date,    "Start time"),
+    Field("end",           str,        time_max,     show,  False,  f_date,    "End time"),
+    Field("planned",       date_str,   min,          show,  False,  f_time,    "Wait time"),
+    Field("timelimit",     str,        time_max,     show,  False,  f_time,    "Reserved walltime"),
+    Field("elapsed",       str,        time_max,     show,  False,  f_time,    "Used walltime"),
+    Field("CPUTime",       str,        keep_first,   show,  False,  f_time,    "Used CPU walltime"),
+    Field("TotalCPU",      str,        keep_first,   show,  False,  f_time,    "Used CPU time"),
+    Field("CPUTimeRaw",    str,        keep_first,   show,  False,  f_cpueff,  "CPU efficiency"),
+    Field("UserCPU",       str,        keep_first,   show,  False,  f_cpu,     "% User (computation)"),
+    Field("SystemCPU",     str,        keep_first,   show,  False,  f_cpu,     "% System (I/O)"),
+    Field("ReqMem",        str,        keep_first,   show,  False,  f_mem,     "Reserved memory"),
+    Field("MaxRSS",        byte_size,  max,          show,  True,   f_rss,     "Max memory used"),
+    Field("maxrss",        byte_size,  max,          show,  True,   f_memeff,  "Memory efficiency"),
+    Field("MaxDiskWrite",  byte_size,  max,          show,  True,   f_drw,     "Max disk write"),
+    Field("MaxDiskRead",   byte_size,  max,          show,  True,   f_drw,     "Max disk read")
+]
+
+FIELD_NAMES = [f.name for f in FIELDS]
+FIELD_NAMES_SSTAT = [f.name for f in FIELDS if f.prefer_sstat]
+FIELD_CTORS = [f.ctor for f in FIELDS]
+FIELD_COMB = [f.combinator for f in FIELDS]
+FORMAT_STR = f"--format={','.join(FIELD_NAMES)}"
+FORMAT_SSTAT_STR = f"--format=jobid,{','.join(FIELD_NAMES_SSTAT)}"
+Meta = namedtuple("Meta", FIELD_NAMES + ["dependencies", "reason"])
+
+# Define functions to get, process, and combine values
+
+def combine(xs):
+    r = xs[0]
+    for x in xs[1:]:
+        for i, comb in enumerate(FIELD_COMB):
+            r[i] = comb(r[i], x[i])
+    return r
+
+def get_sacct_values(jobid):
+    cmd = ["sacct", "-n", "-p", FORMAT_STR, "-j", jobid]
+    proc = subprocess.run(cmd, capture_output = True, text = True)
+    out = proc.stdout.split("\n")[:-1]
+    xs = []
+    for line in out:
+        vals = line.strip().split("|")
+        # Skip <jobid>.extern values (typically not user computation)
+        if vals[0].endswith(".extern"):
+            continue
+        xs.append([ctor(s) for ctor, s in zip(FIELD_CTORS, vals)])
+    if len(xs) == 0:
+        print("Error: no such job", file = sys.stderr)
+        sys.exit(1)
+    return xs
+
+def get_sstat_values(jobid):
+    cmd = ["sstat", "-n", "-P", "-a", FORMAT_SSTAT_STR, "-j", jobid]
+    proc = subprocess.run(cmd, capture_output = True, text = True)
+    out = proc.stdout.split("\n")[:-1]
+    xs = []
+    for line in out:
+        vals = line.strip().split("|")
+        # Skip <jobid>.extern values (typically not user computation)
+        if vals[0].endswith(".extern"):
+            continue
+        del vals[0]
+        j = 0
+        x = []
+        for f in FIELDS:
+            if f.prefer_sstat:
+                x.append(f.ctor(vals[j]))
+                j += 1
+            else:
+                x.append(f.ctor())
+            xs.append(x)
+    return xs
+
+def get_squeue_values(jobid):
+    fmt = "%E;%R"
+    cmd = ["squeue", "-h", "-a", "-o", fmt, "-j", jobid]
+    proc = subprocess.run(cmd, capture_output = True, text = True)
+    dependencies, reason = proc.stdout.strip().split(";")
+    if dependencies == "(null)":
+        dependencies = ""
+    return dependencies, reason
+
+# Define and run main function
+
+def main(jobid):
+    y = combine(get_sacct_values(jobid))
+    meta = Meta._make(y + ["", ""])
+    ys = [y]
+    if "RUNNING" in meta.State and (os.getuid() == 0 or meta.User == os.environ["USER"]):
+        sstat_values = get_sstat_values(jobid)
+        if len(sstat_values) != 0:
+            ys.append(combine(sstat_values))
+    if "PENDING" in meta.State:
+        dependencies, reason = get_squeue_values(jobid)
+    else:
+        dependencies = ""
+        reason = ""
+    y = combine(ys)
+    meta = Meta._make(y + [dependencies, reason])
+    for i,(name,parse,comb,show,prefer_sstat,format,desc) in enumerate(FIELDS):
+        val = y[i]
+        if show:
+            print(f"{desc:<20s} : {format(val, meta)}")
+
+main(args.jobid)

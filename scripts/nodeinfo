@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+
+"""
+nodeinfo
+
+View node information by partition, CPU/GPU models, and state
+
+This script requires:
+  - Python 3.5 or higher (for the subprocess.run command)
+  - Slurm (any recent version should work)
+  - Slurm configured with:
+    - GresTypes=gpu
+
+Notes:
+  - Based on output from sinfo
+"""
+
+import argparse
+import subprocess
+import sys
+
+# Set up arguments and options
+parser = argparse.ArgumentParser(
+    prog = "nodeinfo",
+    formatter_class = argparse.RawDescriptionHelpFormatter,
+    description = "View node information by partition, CPU/GPU models, and state",
+    epilog = """\
+examples:
+
+nodeinfo
+nodeinfo -p epyc-64
+nodeinfo -p main,epyc-64
+nodeinfo -s idle
+nodeinfo -s idle,mix
+nodeinfo -p largemem -s idle
+nodeinfo -p main,epyc-64 -s idle,mix
+nodeinfo -z
+
+support:
+
+https://github.com/uschpc/slurm-tools/issues"""
+)
+parser.add_argument(
+    "-p",
+    "--partition",
+    help = "filter by partition (comma-separated list)"
+)
+parser.add_argument(
+    "-s",
+    "--state",
+    help = "filter by node state (comma-separated list)"
+)
+parser.add_argument(
+    "-z",
+    "--summary",
+    action = "store_true",
+    help = "summarize by partition"
+)
+parser.add_argument(
+    "-V",
+    "--version",
+    action = "store_true",
+    help = "print version"
+)
+args = parser.parse_args()
+
+if args.version:
+    print("nodeinfo 1.0.0")
+    sys.exit(0)
+
+# Display summary by partition
+if args.summary:
+    print("--------------------------------------------------------------------")
+    print("Partition    Timelimit   Status Nodes by state  CPUs by state       ")
+    print("                                A/I/O/Total     A/I/O/Total         ")
+    print("------------ ----------- ------ --------------- --------------------")
+    fmt = "%12P %11l %6a %15F %20C"
+    cmd = ["sinfo", "-h", "-o", fmt]
+    subprocess.run(cmd)
+    print("------------")
+    print("A = allocated or mixed; I = idle; O = other")
+    sys.exit(0)
+
+print("-----------------------------------------------------------------------------------------------------------------------")
+print("Partition    Timelimit   CPU model     CPUs/ Memory(MB)/ GPU model          State  Nodes Nodelist                      ")
+print("                                       node  node                                                                      ")
+print("------------ ----------- ------------- ----- ----------- ------------------ ------ ----- ------------------------------")
+fmt = "%12P %11l %13b %5c %11m %18G %6t %5D %30N"
+cmd = ["sinfo", "-h", "-o", fmt]
+if args.partition is not None:
+    cmd = cmd + ["-p", args.partition]
+if args.state is not None:
+    cmd = cmd + ["-t", args.state]
+subprocess.run(cmd)

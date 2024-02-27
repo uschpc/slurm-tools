@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+
+"""
+jobqueue
+
+View job queue information
+
+This script requires:
+  - Python 3.5 or higher (for the subprocess.run command)
+  - Slurm (any recent version should work)
+"""
+
+import argparse
+import subprocess
+import sys
+
+# Set up arguments and options
+parser = argparse.ArgumentParser(
+    prog = "jobqueue",
+    formatter_class = argparse.RawDescriptionHelpFormatter,
+    description = "View job queue information",
+    epilog = """\
+examples:
+
+jobqueue
+jobqueue -p gpu
+jobqueue -p oneweek,largemem
+jobqueue -u ttrojan
+jobqueue -u ttrojan,btrojan
+jobqueue -p gpu -u ttrojan
+
+notes:
+
+to view completed jobs, run jobhist
+to view job details, run jobinfo <jobid>
+
+support:
+
+https://github.com/uschpc/slurm-tools/issues"""
+)
+parser.add_argument(
+    "-p",
+    "--partition",
+    help = "filter by partition (comma-separated list)"
+)
+parser.add_argument(
+    "-u",
+    "--user",
+    help = "filter by user (comma-separated list)"
+)
+parser.add_argument(
+    "-V",
+    "--version",
+    action = "store_true",
+    help = "print version"
+)
+args = parser.parse_args()
+
+if args.version:
+    print("jobqueue 1.0.0")
+    sys.exit(0)
+
+print("-----------------------------------------------------------------------------------------")
+print("      Job ID       User     Job Name  Partition    State     Elapsed     Nodelist(Reason)")
+print("------------ ---------- ------------ ---------- -------- ----------- --------------------")
+fmt = "%12i %.10u %.12j %.10P %.8T %.11M %.20R"
+cmd = ["squeue", "-h", "-o", fmt]
+if args.partition is not None:
+    cmd = cmd + ["-p", args.partition]
+if args.user is not None:
+    cmd = cmd + ["-u", args.user]
+subprocess.run(cmd)

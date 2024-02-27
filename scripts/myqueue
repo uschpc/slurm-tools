@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+
+"""
+myqueue
+
+View job queue information for user
+
+This script requires:
+  - Python 3.5 or higher (for the subprocess.run command)
+  - Slurm (any recent version should work)
+"""
+
+import argparse
+import os
+import subprocess
+import sys
+
+# Set up arguments and options
+parser = argparse.ArgumentParser(
+    prog = "myqueue",
+    formatter_class = argparse.RawDescriptionHelpFormatter,
+    description = "View job queue information for user",
+    epilog = """\
+examples:
+
+myqueue
+myqueue ttrojan
+
+notes:
+
+to view completed jobs, run jobhist
+to view job details, run jobinfo <jobid>
+
+support:
+
+https://github.com/uschpc/slurm-tools/issues"""
+)
+parser.add_argument(
+    "user",
+    nargs = "?",
+    default = os.environ["USER"],
+    help = "user to query for queue information (default = $USER)"
+)
+parser.add_argument(
+    "-V",
+    "--version",
+    action = "store_true",
+    help = "print version"
+)
+args = parser.parse_args()
+
+if args.version:
+    print("myqueue 1.0.0")
+    sys.exit(0)
+
+print("------------------------------------------------------------------------------")
+print("      Job ID     Job Name  Partition    State     Elapsed     Nodelist(Reason)")
+print("------------ ------------ ---------- -------- ----------- --------------------")
+fmt = "%12i %.12j %.10P %.8T %.11M %.20R"
+cmd = ["squeue", "-h" ,"-o", fmt, "-u", args.user]
+subprocess.run(cmd)
