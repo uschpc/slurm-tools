@@ -51,7 +51,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("myaccount 1.0.0")
+    print("myaccount 1.0.1")
     sys.exit(0)
 
 # Display table of Discovery and Endeavour accounts
@@ -103,8 +103,7 @@ else:
               f"{usage[:10]:<10}" + " " +
               f"{remaining[:10]:<10}")
     print("--------------------------------------------------")
-    print("Usage based on resources reserved                 ")
-    print("--------------------------------------------------")
+    print("***Usage based on resources reserved***           ")
     print("1 CPU/minute              : 1 SU")
     print("4 GB of memory/minute     : 1 SU")
     print("1 A100 or A40 GPU/minute  : 8 SUs")
