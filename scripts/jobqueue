@@ -6,7 +6,7 @@ jobqueue
 View job queue information
 
 This script requires:
-  - Python 3.5 or higher (for the subprocess.run command)
+  - Python 3.5+ (for the subprocess.run command)
   - Slurm (any recent version should work)
 """
 
@@ -28,6 +28,11 @@ jobqueue -p oneweek,largemem
 jobqueue -u ttrojan
 jobqueue -u ttrojan,btrojan
 jobqueue -p gpu -u ttrojan
+jobqueue -a ttrojan_123
+jobqueue -n simulation
+jobqueue -r class
+jobqueue -t pending
+jobqueue -w a04-05
 
 notes:
 
@@ -39,14 +44,39 @@ support:
 https://github.com/uschpc/slurm-tools/issues"""
 )
 parser.add_argument(
+    "-a",
+    "--account",
+    help = "filter by account (comma-separated list)"
+)
+parser.add_argument(
+    "-n",
+    "--name",
+    help = "filter by job name (comma-separated list)"
+)
+parser.add_argument(
     "-p",
     "--partition",
     help = "filter by partition (comma-separated list)"
 )
 parser.add_argument(
+    "-r",
+    "--reservation",
+    help = "filter by reservation name"
+)
+parser.add_argument(
+    "-t",
+    "--state",
+    help = "filter by job state (comma-separated list)"
+)
+parser.add_argument(
     "-u",
     "--user",
     help = "filter by user (comma-separated list)"
+)
+parser.add_argument(
+    "-w",
+    "--nodelist",
+    help = "filter by node name (range or comma-separated list)"
 )
 parser.add_argument(
     "-V",
@@ -57,16 +87,26 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobqueue 1.0.0")
+    print("jobqueue 1.1.0")
     sys.exit(0)
 
 print("-----------------------------------------------------------------------------------------")
-print("      Job ID       User     Job Name  Partition    State     Elapsed     Nodelist(Reason)")
+print("Job ID             User     Job Name  Partition    State     Elapsed     Nodelist(Reason)")
 print("------------ ---------- ------------ ---------- -------- ----------- --------------------")
 fmt = "%12i %.10u %.12j %.10P %.8T %.11M %.20R"
 cmd = ["squeue", "-h", "-o", fmt]
+if args.account is not None:
+    cmd = cmd + ["-A", args.account]
+if args.name is not None:
+    cmd = cmd + ["-n", args.name]
 if args.partition is not None:
     cmd = cmd + ["-p", args.partition]
+if args.reservation is not None:
+    cmd = cmd + ["-R", args.reservation]
+if args.state is not None:
+    cmd = cmd + ["-t", args.state]
+if args.nodelist is not None:
+    cmd = cmd + ["-w", args.nodelist]
 if args.user is not None:
     cmd = cmd + ["-u", args.user]
 subprocess.run(cmd)
