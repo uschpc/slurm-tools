@@ -1,10 +1,18 @@
 # Slurm CLI tools
 
-A collection of various Slurm CLI tools used on CARC HPC clusters.
+A collection of CLI tools used on CARC HPC clusters for various Slurm tasks and queries.
 
 ## Installation
 
-The CLI tools are Python scripts that use the argparse library and rely only on the Python standard library. You can simply download and run them as executables, provided that you have a sufficient version of Python on `PATH`. If needed, install Python and change the file permissions to allow execute permission (e.g., `chmod 755 jobinfo`). If desired, add the executable files to a directory on `PATH`.
+The CLI tools are Python scripts that rely only on the Python standard library and use the argparse library. Some scripts may need to be modified to run on other HPC clusters, depending on the Python version available, Slurm configuration, etc. Check the notes in each script for more information.
+
+To install, simply clone the repo:
+
+```
+git clone --depth 1 https://github.com/uschpc/slurm-tools.git
+```
+
+The scripts will be downloaded with execute permissions. If desired, move the scripts to another directory, such as a directory on `PATH`. If needed, install and/or load a compatible version of Python.
 
 ## Usage
 
@@ -33,8 +41,7 @@ Account           Limit      Usage      Remaining
 ----------------- ---------- ---------- ----------
 ttrojan_123       12000000   422699     11577301  
 --------------------------------------------------
-Usage based on resources reserved                 
---------------------------------------------------
+***Usage based on resources reserved***                 
 1 CPU/minute              : 1 SU
 4 GB of memory/minute     : 1 SU
 1 A100 or A40 GPU/minute  : 8 SUs
@@ -107,7 +114,7 @@ View job queue information.
 ```
 $ jobqueue -p largemem
 -----------------------------------------------------------------------------------------
-      Job ID       User     Job Name  Partition    State     Elapsed     Nodelist(Reason)
+Job ID             User     Job Name  Partition    State     Elapsed     Nodelist(Reason)
 ------------ ---------- ------------ ---------- -------- ----------- --------------------
 7453378            jesp Run_do52bran   largemem  PENDING        0:00 (QOSMaxMemoryPerUser
 7453379            jesp Run_do6b.job   largemem  PENDING        0:00 (QOSMaxMemoryPerUser
@@ -124,7 +131,7 @@ View job queue information for user.
 ```
 $ myqueue
 ------------------------------------------------------------------------------
-      Job ID     Job Name  Partition    State     Elapsed     Nodelist(Reason)
+Job ID           Job Name  Partition    State     Elapsed     Nodelist(Reason)
 ------------ ------------ ---------- -------- ----------- --------------------
 487418            sim2.sl       main  PENDING        0:00         (Dependency)
 486794             sim.sl       main  RUNNING  1-12:13:20               d05-06
