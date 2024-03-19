@@ -6,7 +6,7 @@ myqueue
 View job queue information for user
 
 This script requires:
-  - Python 3.5 or higher (for the subprocess.run command)
+  - Python 3.5+ (for the subprocess.run command)
   - Slurm (any recent version should work)
 """
 
@@ -25,6 +25,13 @@ examples:
 
 myqueue
 myqueue ttrojan
+myqueue -p gpu
+myqueue -p oneweek,largemem
+myqueue -a ttrojan_123
+myqueue -n simulation
+myqueue -r class
+myqueue -t pending
+myqueue -w a04-05
 
 notes:
 
@@ -42,6 +49,36 @@ parser.add_argument(
     help = "user to query for queue information (default = $USER)"
 )
 parser.add_argument(
+    "-a",
+    "--account",
+    help = "filter by account (comma-separated list)"
+)
+parser.add_argument(
+    "-n",
+    "--name",
+    help = "filter by job name (comma-separated list)"
+)
+parser.add_argument(
+    "-p",
+    "--partition",
+    help = "filter by partition (comma-separated list)"
+)
+parser.add_argument(
+    "-r",
+    "--reservation",
+    help = "filter by reservation name"
+)
+parser.add_argument(
+    "-t",
+    "--state",
+    help = "filter by job state (comma-separated list)"
+)
+parser.add_argument(
+    "-w",
+    "--nodelist",
+    help = "filter by node name (range or comma-separated list)"
+)
+parser.add_argument(
     "-V",
     "--version",
     action = "store_true",
@@ -50,12 +87,24 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("myqueue 1.0.0")
+    print("myqueue 1.1.0")
     sys.exit(0)
 
 print("------------------------------------------------------------------------------")
-print("      Job ID     Job Name  Partition    State     Elapsed     Nodelist(Reason)")
+print("Job ID           Job Name  Partition    State     Elapsed     Nodelist(Reason)")
 print("------------ ------------ ---------- -------- ----------- --------------------")
 fmt = "%12i %.12j %.10P %.8T %.11M %.20R"
 cmd = ["squeue", "-h" ,"-o", fmt, "-u", args.user]
+if args.account is not None:
+    cmd = cmd + ["-A", args.account]
+if args.name is not None:
+    cmd = cmd + ["-n", args.name]
+if args.partition is not None:
+    cmd = cmd + ["-p", args.partition]
+if args.reservation is not None:
+    cmd = cmd + ["-R", args.reservation]
+if args.state is not None:
+    cmd = cmd + ["-t", args.state]
+if args.nodelist is not None:
+    cmd = cmd + ["-w", args.nodelist]
 subprocess.run(cmd)
