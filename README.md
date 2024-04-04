@@ -57,6 +57,22 @@ trojan         ttrojan_123,hpcroot
 shared         ALL
 ```
 
+### noderes
+
+View available resources on nodes.
+
+```
+$ noderes -p debug
+-------------------------------------------------------------------
+Node      Partition     State         CPU      GPU Free   Free Free
+                                    Model    Model CPUs Memory GPUs
+------ ------------ --------- ----------- -------- ---- ------ ----
+b11-09        debug      idle   epyc-7313      a40   32   248G    2
+d05-41        debug      idle   xeon-4116       --   24   185G   --
+d05-42        debug      idle   xeon-4116       --   24   185G   --
+e23-02        debug     mixed xeon-2640v4     p100    8    75G    2
+```
+
 ### nodeinfo
 
 View node information by partition, CPU/GPU models, and state.
