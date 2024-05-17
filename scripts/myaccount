@@ -6,7 +6,7 @@ myaccount
 View account information for user
 
 This script requires:
-  - Python 3.7 or higher (for the subprocess.run options)
+  - Python 3.7+ (for the subprocess.run options)
   - Slurm (any recent version should work)
   - Slurm configured with:
     - PriorityType=priority/multifactor
@@ -51,32 +51,35 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("myaccount 1.0.1")
+    print("myaccount 1.0.2")
     sys.exit(0)
 
 # Display table of Discovery and Endeavour accounts
-print("----------------------------------------------------------------")
-print("Project accounts                                                ")
-print("----------------------------------------------------------------")
-print("User       Account         Cluster    Default         QOS       ")
-print("---------- --------------- ---------- --------------- ----------")
-fmt = "format=user%-10,account%-15,cluster%-10,defaultaccount%-15,qos%-10"
+print("-----------------------------------------------------------------")
+print("Project accounts                                                 ")
+print("-----------------------------------------------------------------")
+print("User       Account         Cluster    Default         QOS        ")
+print("---------- --------------- ---------- --------------- -----------")
+fmt = "format=user%-10,account%-15,cluster%-10,defaultaccount%-15,qos%-11"
 cmd = ["sacctmgr", "-n", "-s", "list", "user", args.user, fmt, "cluster=discovery,condo"]
 proc = subprocess.run(cmd, capture_output = True, text = True)
 out = proc.stdout.split("\n")[:-1]
-for line in out:
-    print(line)
+if not out:
+    print("*** No accounts found for " + args.user + " ***")
+else:
+    for line in out:
+        print(line)
 print("")
 
 # Display table of Discovery account limits and usage
-print("--------------------------------------------------")
-print("Discovery account system units (SUs)              ")
-print("--------------------------------------------------")
-print("Account           Limit      Usage      Remaining ")
-print("----------------- ---------- ---------- ----------")
+print("-----------------------------------------------------------------")
+print("Discovery account service units (SUs)                            ")
+print("-----------------------------------------------------------------")
+print("Account           Limit           Usage           Remaining      ")
+print("----------------- --------------- --------------- ---------------")
 discovery = [line.split()[1] for line in out if "discovery" in line]
 if not discovery:
-    print("None")
+    print("*** No Discovery accounts found for " + args.user + " ***")
 else:
     fmt2 = "account,grptresmins,grptresraw"
     cmd2 = ["sshare", "-P", "-o", fmt2, "-M", "discovery"]
@@ -99,28 +102,28 @@ else:
             usage = "n/a"
             remaining = "n/a"
         print(f"{account[:17]:<17}" + " " +
-              f"{limit[:10]:<10}" + " " +
-              f"{usage[:10]:<10}" + " " +
-              f"{remaining[:10]:<10}")
-    print("--------------------------------------------------")
-    print("***Usage based on resources reserved***           ")
-    print("1 CPU/minute              : 1 SU")
-    print("4 GB of memory/minute     : 1 SU")
-    print("1 A100 or A40 GPU/minute  : 8 SUs")
-    print("1 V100 or P100 GPU/minute : 4 SUs")
-    print("1 K40 GPU/minute          : 2 SUs")
+              f"{limit[:15]:<15}" + " " +
+              f"{usage[:15]:<15}" + " " +
+              f"{remaining[:15]:<15}")
+    print("")
+    print("***  Usage based on resources reserved")
+    print("***  1 CPU/minute              : 1 SU")
+    print("***  4 GB of memory/minute     : 1 SU")
+    print("***  1 A100 or A40 GPU/minute  : 8 SUs")
+    print("***  1 V100 or P100 GPU/minute : 4 SUs")
+    print("***  1 K40 GPU/minute          : 2 SUs")
 
 # Display allowed partitions on Endeavour
 if "endeavour" in os.environ["HOSTNAME"]:
     print("")
-    print("----------------------------------------------------------------")
-    print("Allowed Endeavour partitions                                    ")
-    print("----------------------------------------------------------------")
-    print("Partition      Accounts                                         ")
-    print("-------------- -------------------------------------------------")
+    print("-----------------------------------------------------------------")
+    print("Allowed Endeavour partitions                                     ")
+    print("-----------------------------------------------------------------")
+    print("Partition      Accounts                                          ")
+    print("-------------- --------------------------------------------------")
     endeavour = [line.split()[1] for line in out if "condo" in line]
     if not endeavour:
-        print("None")
+        print("*** No Endeavour accounts found for " + args.user + " ***")
     else:
         endeavour = "|".join(endeavour)
         cmd3 = ["scontrol", "-o", "show", "partitions"]
