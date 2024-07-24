@@ -106,7 +106,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("noderes 1.0.0")
+    print("noderes 1.0.1")
     sys.exit(0)
 
 def memtogib(val):
@@ -218,7 +218,7 @@ def getnoderes(node):
         else:
             res["cfgtresgpu"] = int(cfgtresgpu.group(1))
         # Get GPU model
-        gpumodel = re.search(r"gres/gpu:([a-zA-Z]+[0-9]+)", cfgtres)
+        gpumodel = re.search(r"gres/gpu:([a-zA-Z0-9]+)", cfgtres)
         if res["cfgtresgpu"] == 0:
             res["gpumodel"] = "--"
         elif gpumodel is None:
