@@ -51,7 +51,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("myaccount 1.0.2")
+    print("myaccount 1.0.3")
     sys.exit(0)
 
 # Display table of Discovery and Endeavour accounts
@@ -106,12 +106,12 @@ else:
               f"{usage[:15]:<15}" + " " +
               f"{remaining[:15]:<15}")
     print("")
-    print("***  Usage based on resources reserved")
-    print("***  1 CPU/minute              : 1 SU")
-    print("***  4 GB of memory/minute     : 1 SU")
-    print("***  1 A100 or A40 GPU/minute  : 8 SUs")
-    print("***  1 V100 or P100 GPU/minute : 4 SUs")
-    print("***  1 K40 GPU/minute          : 2 SUs")
+    print("*** Usage based on resources reserved")
+    print("*** 1 CPU/minute              : 1 SU ")
+    print("*** 4 GB of memory/minute     : 1 SU ")
+    print("*** 1 A100 or A40 GPU/minute  : 8 SUs")
+    print("*** 1 V100 or P100 GPU/minute : 4 SUs")
+    print("*** 1 K40 GPU/minute          : 2 SUs")
 
 # Display allowed partitions on Endeavour
 if "endeavour" in os.environ["HOSTNAME"]:
