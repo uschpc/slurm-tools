@@ -6,9 +6,10 @@ jobinfo
 View detailed job information
 
 This script requires:
-  - Python 3.7 or higher (for the subprocess.run options)
-  - Slurm 23.02 or higher (for the sacct field "planned")
+  - Python 3.7+ (for the subprocess.run options)
+  - Slurm 23.02+ (for the sacct field "planned")
   - Slurm configured with:
+    - JobAcctGatherType=jobacct_gather/linux or jobacct_gather/cgroup
     - GresTypes=gpu
     - AccountingStorageTRES=gres/gpu
 
@@ -84,7 +85,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobinfo 1.0.0")
+    print("jobinfo 1.0.1")
     sys.exit(0)
 
 if args.jobid is None:
@@ -165,7 +166,7 @@ def gpu_str(s=None):
     g = re.match(r".*gres/gpu=(?P<num_gpus>\d+)", s.lower())
     num_gpus = g.group("num_gpus")
     # Type of GPU allocated
-    t = re.match(r".*gres/gpu:(?P<gpu_type>\w\d+)", s.lower())
+    t = re.match(r".*gres/gpu:(?P<gpu_type>[a-zA-Z0-9]+)", s.lower())
     if t is None:
         return num_gpus
     gpu_type = t.group("gpu_type")
