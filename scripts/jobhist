@@ -3,20 +3,22 @@
 """
 jobhist
 
-View compact history of user's jobs
+View compact history of jobs
 
 This script requires:
-  - Python 3.5 or higher (for the subprocess.run command)
+  - Python 3.5+ (for the subprocess.run command)
   - Slurm (any recent version should work)
+  - Slurm configured with:
+    - JobAcctGatherType=jobacct_gather/linux or jobacct_gather/cgroup
 
 Notes:
   - Based on output from sacct
-  - Default settings are job history for past 7 days for $USER
+  - Default setting is job history for past day
+  - To filter by state, use grep
 """
 
 from datetime import datetime, timedelta
 import argparse
-import os
 import subprocess
 import sys
 
@@ -24,42 +26,51 @@ import sys
 parser = argparse.ArgumentParser(
     prog = "jobhist",
     formatter_class = argparse.RawDescriptionHelpFormatter,
-    description = "View compact history of user's jobs",
+    description = "View compact history of jobs",
     epilog = """\
 examples:
 
 jobhist
-jobhist 30
-jobhist 14 ttrojan
+jobhist -s 2024-07-01
+jobhist -s 2024-07-01 -e 2024-07-02
+jobhist -u ttrojan
 jobhist -p largemem
-jobhist 30 -p epyc-64
-jobhist 14 ttrojan -p main
+jobhist -u ttrojan -p main
+jobhist -u ttrojan -s 2024-07-01 -p gpu
+jobhist -a ttrojan_123
 
 notes:
 
-to view job details, run jobinfo <jobid>
+to view more job details, run jobinfo <jobid>
 
 support:
 
 https://github.com/uschpc/slurm-tools/issues"""
 )
 parser.add_argument(
-    "days",
-    nargs = "?",
-    type = int,
-    default = 7,
-    help = "days to include in history (default = 7)"
+    "-a",
+    "--account",
+    help = "account to query for history (comma-separated list)"
 )
 parser.add_argument(
-    "user",
-    nargs = "?",
-    default = os.environ["USER"],
-    help = "user to query for history (default = $USER)"
+    "-e",
+    "--end",
+    help = "end date to query for history (YYYY-MM-DD)"
 )
 parser.add_argument(
     "-p",
     "--partition",
-    help = "filter by partition (comma-separated list)"
+    help = "partition to query for history (comma-separated list)"
+)
+parser.add_argument(
+    "-s",
+    "--start",
+    help = "start date to query for history (YYYY-MM-DD)"
+)
+parser.add_argument(
+    "-u",
+    "--user",
+    help = "user to query for history (comma-separated list)"
 )
 parser.add_argument(
     "-V",
@@ -70,16 +81,29 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobhist 1.0.0")
+    print("jobhist 2.0.0")
     sys.exit(0)
 
-print("-----------------------------------------------------------------------------------------")
-print("Startdate         Job ID     Job Name  Partition      State     Elapsed Nodes CPUs Memory")
-print("---------- ------------- ------------ ---------- ---------- ----------- ----- ---- ------")
-date = datetime.today() - timedelta(days = args.days)
-date = date.strftime("%Y-%m-%d")
-fmt = "start%10,jobid%13,jobname%12,partition,state,elapsed%11,nnodes%5,reqcpus%4,reqmem%6"
-cmd = ["sacct", "-n", "-X", "-o", fmt, "-u", args.user, "-S", date]
-if args.partition:
+print("----------------------------------------------------------------------------------------------------")
+print("Job ID         Startdate       User     Job Name  Partition      State     Elapsed Nodes CPUs Memory")
+print("------------- ---------- ---------- ------------ ---------- ---------- ----------- ----- ---- ------")
+fmt = "jobid%-13,start%10,user%10,jobname%12,partition,state,elapsed%11,nnodes%5,reqcpus%4,reqmem%6"
+cmd = ["sacct", "-a", "-n", "-X", "-o", fmt]
+if args.start is not None and args.end is not None:
+    cmd = cmd + ["-S", args.start, "-E", args.end]
+elif args.start is not None and args.end is None:
+    cmd = cmd + ["-S", args.start]
+elif args.start is None and args.end is not None:
+    print("Error: no start date given")
+    sys.exit(1)
+else:
+    date = datetime.today() - timedelta(days = 1)
+    date = date.strftime("%Y-%m-%d")
+    cmd = cmd + ["-S", date]
+if args.account is not None:
+    cmd = cmd + ["-A", args.account]
+if args.partition is not None:
     cmd = cmd + ["-r", args.partition]
+if args.user is not None:
+    cmd = cmd + ["-u", args.user]
 subprocess.run(cmd)

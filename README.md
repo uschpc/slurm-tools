@@ -155,19 +155,22 @@ Job ID           Job Name  Partition    State     Elapsed     Nodelist(Reason)
 
 ### jobhist
 
-View compact history of user's jobs.
+View compact history of jobs.
 
 ```
-$ jobhist
------------------------------------------------------------------------------------------
-Startdate         Job ID     Job Name  Partition      State     Elapsed Nodes CPUs Memory
----------- ------------- ------------ ---------- ---------- ----------- ----- ---- ------
-2024-01-25        484933  debugsim.sl      debug     FAILED    00:00:05     1    4    16G
-2024-01-25        484934  debugsim.sl      debug  COMPLETED    00:00:19     1    4    16G
-2024-01-26        486288  interactive       main  COMPLETED    00:20:53     1   16    32G
-2024-01-27        486290  interactive      debug    TIMEOUT    00:30:02     1   16    32G
-2024-01-28        486624       sim.sl    oneweek  COMPLETED  3-00:30:22     1   16   120G
+$ jobhist -p largemem
+----------------------------------------------------------------------------------------------------
+Job ID         Startdate       User     Job Name  Partition      State     Elapsed Nodes CPUs Memory
+------------- ---------- ---------- ------------ ---------- ---------- ----------- ----- ---- ------
+14690860      2024-07-29    ttrojan       sim.sl   largemem    RUNNING  3-08:19:19     1   32   128G 
+14734145      2024-07-31       jesp         sfla   largemem    RUNNING  2-21:46:24     1   64   998G 
+14738354      2024-07-31       snet  interactive   largemem  COMPLETED    06:56:19     1   16   400G 
+14741823      2024-07-31     huy435   model_fit1   largemem  COMPLETED    07:04:19     1   64   248G 
+14741846      2024-07-31     huy435   model_fit2   largemem  COMPLETED    08:10:59     1   64   248G 
+14741918      2024-08-01       snet   feature.sl   largemem     FAILED    00:02:16     1    8   300G 
 ```
+
+If desired, create a `myjobhist` alias using `alias myjobhist="jobhist -u $USER"`.
 
 ### jobinfo
 
