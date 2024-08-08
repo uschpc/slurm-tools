@@ -23,6 +23,7 @@ parser = argparse.ArgumentParser(
 examples:
 
 jobqueue
+jobqueue --me
 jobqueue -p gpu
 jobqueue -p oneweek,largemem
 jobqueue -u ttrojan
@@ -37,7 +38,7 @@ jobqueue -w a04-05
 notes:
 
 to view completed jobs, run jobhist
-to view job details, run jobinfo <jobid>
+to view more job details, run jobinfo <jobid>
 
 support:
 
@@ -49,9 +50,19 @@ parser.add_argument(
     help = "filter by account (comma-separated list)"
 )
 parser.add_argument(
+    "--me",
+    action = "store_true",
+    help = "view own jobs"
+)
+parser.add_argument(
     "-n",
     "--name",
     help = "filter by job name (comma-separated list)"
+)
+parser.add_argument(
+    "-w",
+    "--nodelist",
+    help = "filter by node name (range or comma-separated list)"
 )
 parser.add_argument(
     "-p",
@@ -74,11 +85,6 @@ parser.add_argument(
     help = "filter by user (comma-separated list)"
 )
 parser.add_argument(
-    "-w",
-    "--nodelist",
-    help = "filter by node name (range or comma-separated list)"
-)
-parser.add_argument(
     "-V",
     "--version",
     action = "store_true",
@@ -87,7 +93,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobqueue 1.1.0")
+    print("jobqueue 1.2.0")
     sys.exit(0)
 
 print("-----------------------------------------------------------------------------------------")
@@ -97,16 +103,18 @@ fmt = "%12i %.10u %.12j %.10P %.8T %.11M %.20R"
 cmd = ["squeue", "-h", "-o", fmt]
 if args.account is not None:
     cmd = cmd + ["-A", args.account]
+if args.me:
+    cmd = cmd + ["--me"]
 if args.name is not None:
     cmd = cmd + ["-n", args.name]
+if args.nodelist is not None:
+    cmd = cmd + ["-w", args.nodelist]
 if args.partition is not None:
     cmd = cmd + ["-p", args.partition]
 if args.reservation is not None:
     cmd = cmd + ["-R", args.reservation]
 if args.state is not None:
     cmd = cmd + ["-t", args.state]
-if args.nodelist is not None:
-    cmd = cmd + ["-w", args.nodelist]
 if args.user is not None:
     cmd = cmd + ["-u", args.user]
 subprocess.run(cmd)
