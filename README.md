@@ -140,19 +140,6 @@ Job ID             User     Job Name  Partition    State     Elapsed     Nodelis
 7470944          huy435    rfmixchr1   largemem  RUNNING    21:18:51        a02-10,a04-10
 ```
 
-### myqueue
-
-View job queue information for user.
-
-```
-$ myqueue
-------------------------------------------------------------------------------
-Job ID           Job Name  Partition    State     Elapsed     Nodelist(Reason)
------------- ------------ ---------- -------- ----------- --------------------
-487418            sim2.sl       main  PENDING        0:00         (Dependency)
-486794             sim.sl       main  RUNNING  1-12:13:20               d05-06
-```
-
 ### jobhist
 
 View compact history of jobs.
