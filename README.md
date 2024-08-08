@@ -157,8 +157,6 @@ Job ID         Startdate       User     Job Name  Partition      State     Elaps
 14741918      2024-08-01       snet   feature.sl   largemem     FAILED    00:02:16     1    8   300G 
 ```
 
-If desired, create a `myjobhist` alias using `alias myjobhist="jobhist -u $USER"`.
-
 ### jobinfo
 
 View detailed job information.

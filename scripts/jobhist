@@ -19,6 +19,7 @@ Notes:
 
 from datetime import datetime, timedelta
 import argparse
+import os
 import subprocess
 import sys
 
@@ -31,6 +32,7 @@ parser = argparse.ArgumentParser(
 examples:
 
 jobhist
+jobhist --me
 jobhist -s 2024-07-01
 jobhist -s 2024-07-01 -e 2024-07-02
 jobhist -u ttrojan
@@ -58,6 +60,11 @@ parser.add_argument(
     help = "end date to query for history (YYYY-MM-DD)"
 )
 parser.add_argument(
+    "--me",
+    action = "store_true",
+    help = "query own jobs"
+)
+parser.add_argument(
     "-p",
     "--partition",
     help = "partition to query for history (comma-separated list)"
@@ -81,7 +88,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobhist 2.0.0")
+    print("jobhist 2.1.0")
     sys.exit(0)
 
 print("----------------------------------------------------------------------------------------------------")
@@ -102,6 +109,8 @@ else:
     cmd = cmd + ["-S", date]
 if args.account is not None:
     cmd = cmd + ["-A", args.account]
+if args.me:
+    cmd = cmd + ["-u", os.environ["USER"]]
 if args.partition is not None:
     cmd = cmd + ["-r", args.partition]
 if args.user is not None:
