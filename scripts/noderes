@@ -106,7 +106,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("noderes 1.0.1")
+    print("noderes 1.0.2")
     sys.exit(0)
 
 def memtogib(val):
@@ -120,6 +120,8 @@ def memtogib(val):
     - int: memory value in GiB
     - None: if unit not found
     """
+    if re.search(r"T", val):
+        return int(float(val[:-1]) * 1024)
     if re.search(r"G", val):
         return int(float(val[:-1]))
     if re.search(r"M", val):
