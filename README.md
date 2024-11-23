@@ -27,33 +27,27 @@ View account information for user.
 ```
 $ myaccount
 -----------------------------------------------------------------
-Project accounts
+Cluster accounts
 -----------------------------------------------------------------
 User       Account         Cluster    Default         QOS
 ---------- --------------- ---------- --------------- -----------
 ttrojan    ttrojan_123     discovery  ttrojan_123     normal
-ttrojan    ttrojan_123     condo      ttrojan_123     normal
+ttrojan    ttrojan_125     discovery  ttrojan_123     normal
 
 -----------------------------------------------------------------
-Discovery account service units (SUs)
+Cluster account service units (SUs)
 -----------------------------------------------------------------
 Account           Limit           Usage           Remaining
 ----------------- --------------- --------------- ---------------
 ttrojan_123       12000000        422699          11577301
-
-*** Usage based on resources reserved
-*** 1 CPU/minute              : 1 SU
-*** 4 GB of memory/minute     : 1 SU
-*** 1 A100 or A40 GPU/minute  : 8 SUs
-*** 1 V100 or P100 GPU/minute : 4 SUs
-*** 1 K40 GPU/minute          : 2 SUs
+ttrojan_125       n/a             839856          n/a
 
 -----------------------------------------------------------------
-Allowed Endeavour partitions
+Allowed cluster partitions
 -----------------------------------------------------------------
-Partition      Accounts
+Partition      Allowed accounts
 -------------- --------------------------------------------------
-trojan         ttrojan_123,hpcroot
+trojan         ttrojan_125
 shared         ALL
 ```
 
