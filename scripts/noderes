@@ -106,7 +106,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("noderes 1.0.2")
+    print("noderes 1.0.3")
     sys.exit(0)
 
 def memtogib(val):
@@ -180,8 +180,6 @@ def getnoderes(node):
         res["nodestateshort"] = "drain" # special type of idle
     if re.search(r"maintenance", res["nodestate"]):
         res["nodestateshort"] = "maint" # can be idle, mixed, or allocated
-    if re.search(r"planned", res["nodestate"]):
-        res["nodestateshort"] = "planned" # special type of idle
     if re.search(r"reserved", res["nodestate"]):
         res["nodestateshort"] = "reserved" # can be idle, mixed, or allocated
 
@@ -237,7 +235,7 @@ def getnoderes(node):
         res["freecpus"] = 0
         res["freemem"] = 0
         res["freegpus"] = 0
-    elif re.search(r"idle|planned", res["nodestate"]):
+    elif re.search(r"idle", res["nodestate"]):
         res["alloctrescpu"] = 0
         res["alloctresmem"] = 0
         res["alloctresgpu"] = 0
