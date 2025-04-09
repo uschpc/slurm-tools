@@ -24,6 +24,7 @@ examples:
 
 jobqueue
 jobqueue --me
+jobqueue --all
 jobqueue -p gpu
 jobqueue -p oneweek,largemem
 jobqueue -u ttrojan
@@ -48,6 +49,11 @@ parser.add_argument(
     "-a",
     "--account",
     help = "filter by account (comma-separated list)"
+)
+parser.add_argument(
+    "--all",
+    action = "store_true",
+    help ="view jobs in all partitions"
 )
 parser.add_argument(
     "--me",
@@ -93,7 +99,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobqueue 1.2.0")
+    print("jobqueue 1.3.0")
     sys.exit(0)
 
 print("-----------------------------------------------------------------------------------------")
@@ -103,6 +109,8 @@ fmt = "%12i %.10u %.12j %.10P %.8T %.11M %.20R"
 cmd = ["squeue", "-h", "-o", fmt]
 if args.account is not None:
     cmd = cmd + ["-A", args.account]
+if args.all:
+    cmd = cmd + ["--all"]
 if args.me:
     cmd = cmd + ["--me"]
 if args.name is not None:
