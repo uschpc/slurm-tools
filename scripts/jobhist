@@ -6,7 +6,7 @@ jobhist
 View compact history of jobs
 
 This script requires:
-  - Python 3.5+ (for the subprocess.run command)
+  - Python 3.10+ (for the zip() strict = True option)
   - Slurm (any recent version should work)
   - Slurm configured with:
     - JobAcctGatherType=jobacct_gather/linux or jobacct_gather/cgroup
@@ -20,6 +20,7 @@ Notes:
 from datetime import datetime, timedelta
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -88,20 +89,84 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobhist 2.1.1")
+    print("jobhist 2.2.0")
     sys.exit(0)
 
-print("----------------------------------------------------------------------------------------------------")
-print("Job ID         Startdate       User     Job Name  Partition      State     Elapsed Nodes CPUs Memory")
-print("------------- ---------- ---------- ------------ ---------- ---------- ----------- ----- ---- ------")
-fmt = "jobid%-13,start%10,user%10,jobname%12,partition,state,elapsed%11,nnodes%5,reqcpus%4,reqmem%6"
-cmd = ["sacct", "-a", "-n", "-X", "-o", fmt]
+def mem_to_gib(mem):
+    """
+    Convert memory value to GiB
+
+    # Arguments
+    - mem: str for memory value
+
+    # Returns
+    - str: memory value in GiB
+    - None: if unit not found
+    """
+    v = float(mem[:-1])
+    if mem.endswith("T"):
+        return str(int(v * 1024)) + "G"
+    if mem.endswith("G"):
+        return str(int(v)) + "G"
+    if mem.endswith("M"):
+        return str(int(v / 1024)) + "G"
+    if mem.endswith("K"):
+        return str(int(v / 1024 / 1024)) + "G"
+    return None
+
+def get_job_info(f, v):
+    """
+    Parse and derive job info values
+
+    # Arguments
+    - f: str of job info fields used for sacct -o
+    - v: str of job info values from sacct -X -P output
+
+    # Returns
+    - dict: job info key-value pairs
+
+    # Notes
+    - Assumes sacct -X -P -o options are used
+    - Assumes certain fields are present: state,reqtres,alloctres
+    """
+    # Create dict from keys and values
+    keys = f.split(",")
+    values = v.split("|")
+    d = dict(zip(keys, values, strict = True))
+    # Replace state CANCELLED by ... with just CANCELLED
+    if "CANCELLED" in d["state"]:
+        d["state"] = "CANCELLED"
+    # Get requested nodes
+    d["reqnodes"] = re.search(r"node=([0-9]+)", d["reqtres"]).group(1)
+    # Get requested CPUs
+    d["reqcpus"] = re.search(r"cpu=([0-9]+)", d["reqtres"]).group(1)
+    # Get requested memory (may be in varying units)
+    d["reqmem"] = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["reqtres"]).group(1)
+    d["reqmem"] = mem_to_gib(d["reqmem"])
+    # alloctres may be empty in some cases (e.g., job is cancelled before resources are allocated)
+    if d["alloctres"] == "":
+        d["allocnodes"] = "--"
+        d["alloccpus"] = "--"
+        d["allocmem"] = "--"
+    else:
+        # Get allocated nodes
+        d["allocnodes"] = re.search(r"node=([0-9]+)", d["alloctres"]).group(1)
+        # Get allocated CPUs
+        d["alloccpus"] = re.search(r"cpu=([0-9]+)", d["alloctres"]).group(1)
+        # Get allocated memory (may be in varying units)
+        d["allocmem"] = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["alloctres"]).group(1)
+        d["allocmem"] = mem_to_gib(d["allocmem"])
+    return d
+
+fields = "jobid,start,user,jobname,partition,state,elapsed,reqtres,alloctres"
+cmd = ["sacct", "-a", "-X", "-n", "-P", "-o", fields]
+
 if args.start is not None and args.end is not None:
     cmd = cmd + ["-S", args.start, "-E", args.end]
 elif args.start is not None and args.end is None:
     cmd = cmd + ["-S", args.start]
 elif args.start is None and args.end is not None:
-    print("Error: no start date given")
+    print("Error: no start date given", file = sys.stderr)
     sys.exit(1)
 else:
     date = datetime.today() - timedelta(days = 1)
@@ -115,4 +180,40 @@ if args.partition is not None:
     cmd = cmd + ["-r", args.partition]
 if args.user is not None:
     cmd = cmd + ["-u", args.user]
-subprocess.run(cmd, env = {"SLURM_TIME_FORMAT":"%Y-%m-%d"})
+
+proc = subprocess.run(cmd, env = {"SLURM_TIME_FORMAT":"%Y-%m-%d"}, capture_output = True, text = True)
+joblist = proc.stdout.split("\n")[:-1]
+
+print("----------------------------------------------------------------------------------------------------")
+print("Job ID         Startdate       User     Job Name  Partition      State     Elapsed Nodes CPUs Memory")
+print("------------- ---------- ---------- ------------ ---------- ---------- ----------- ----- ---- ------")
+for job in joblist:
+    info = get_job_info(fields, job)
+    # Print requested resources in some cases
+    if (info["state"] == "PENDING"
+        # Job cancelled before resources are allocated
+        or (info["state"] == "CANCELLED" and info["alloctres"] == "")
+        # Job submission failed (e.g., requested node configuration is not available)
+        or (info["state"] == "FAILED" and info["start"] == "None")):
+        print(f"{info['jobid'][:13]:<13}"
+              + " " + f"{info['start'][:10]:>10}"
+              + " " + f"{info['user'][:10]:>10}"
+              + " " + f"{info['jobname'][:12].strip():>12}"
+              + " " + f"{info['partition'][:10]:>10}"
+              + " " + f"{info['state'][:10]:>10}"
+              + " " + f"{info['elapsed'][:11]:>11}"
+              + " " + f"{info['reqnodes'][:5]:>5}"
+              + " " + f"{info['reqcpus'][:4]:>4}"
+              + " " + f"{info['reqmem'][:6]:>6}")
+    # Print allocated resources in all other cases
+    else:
+        print(f"{info['jobid'][:13]:<13}"
+              + " " + f"{info['start'][:10]:>10}"
+              + " " + f"{info['user'][:10]:>10}"
+              + " " + f"{info['jobname'][:12].strip():>12}"
+              + " " + f"{info['partition'][:10]:>10}"
+              + " " + f"{info['state'][:10].strip():>10}"
+              + " " + f"{info['elapsed'][:11]:>11}"
+              + " " + f"{info['allocnodes'][:5]:>5}"
+              + " " + f"{info['alloccpus'][:4]:>4}"
+              + " " + f"{info['allocmem'][:6]:>6}")
