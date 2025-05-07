@@ -12,11 +12,11 @@ To install, simply clone the repo:
 git clone --depth 1 https://github.com/uschpc/slurm-tools.git
 ```
 
-The scripts will be downloaded with execute permissions. If desired, move the scripts to another directory, such as a directory on `PATH`. If needed, install and/or load a compatible version of Python.
+The scripts will be downloaded with execute permissions. If desired, move the scripts to another directory, such as a directory on `PATH`. If needed, load a compatible version of Python and/or change the hashbang to use a compatible Python executable.
 
 ## Usage
 
-Each script contains help and usage information that can be viewed with the `--help` flag (e.g., `jobinfo --help`).
+Each script contains help and usage information that can be viewed with the `-h/--help` flag (e.g., `jobinfo -h`).
 
 The scripts are described and shown with example output below.
 
@@ -107,36 +107,36 @@ View detailed job information.
 
 ```
 $ jobinfo 483699
-Job ID               : 483699
-Job name             : simdebug.sl
-User                 : ttrojan
-Account              : ttrojan_123
-Working directory    : /project/ttrojan_123/sim
-Cluster              : discovery
-Partition            : debug
-Nodes                : 2
-Nodelist             : e05-[42,76]
-Tasks                : 32
-CPUs                 : 32
-GPUs                 : 0
-State                : COMPLETED
-Exit code            : 0:0
-Submit time          : 2024-01-26T14:56:23
-Start time           : 2024-01-26T14:56:24
-End time             : 2024-01-26T14:57:32
-Wait time            : 00:00:01
-Reserved walltime    : 00:10:00
-Used walltime        : 00:01:08
-Used CPU walltime    : 00:36:16
-Used CPU time        : 00:35:18
-CPU efficiency       : 97.37%
-% User (computation) : 96.35%
-% System (I/O)       :  3.65%
-Reserved memory      : 120G
-Max memory used      : 64.74G (estimate)
-Memory efficiency    : 53.95%
-Max disk write       : 1.04M
-Max disk read        : 14.42M
+Job ID               | 483699
+Job name             | simdebug.sl
+User                 | ttrojan
+Account              | ttrojan_123
+Working directory    | /project/ttrojan_123/sim
+Cluster              | discovery
+Partition            | debug
+State                | COMPLETED
+Exit code            | 0:0
+Nodes                | 2
+Tasks                | 32
+CPUs                 | 32
+Memory               | 120G
+GPUs                 | 0
+Nodelist             | e05-[42,76]
+Submit time          | 2024-01-26T14:56:23
+Start time           | 2024-01-26T14:56:24
+End time             | 2024-01-26T14:57:32
+Wait time            | 00:00:01
+Reserved walltime    | 00:10:00
+Elapsed walltime     | 00:01:08
+Elapsed CPU walltime | 00:36:16
+Used CPU time        | 00:35:18
+CPU efficiency       | 97.37%
+% User (computation) | 96.35%
+% System (I/O)       |  3.65%
+Max memory used      | 64.74G (estimate)
+Memory efficiency    | 53.95%
+Max disk read        | 14.42M (estimate)
+Max disk write       | 1.04M (estimate)
 ```
 
 ## License
