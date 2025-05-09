@@ -58,7 +58,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobinfo 2.0.0")
+    print("jobinfo 2.1.0")
     sys.exit(0)
 
 if args.jobid is None:
@@ -382,8 +382,13 @@ def get_sacct_values(jobid, fields):
         if spl[0].endswith(".extern"):
             continue
         # Modify some values in order to compare or sum
-        # Convert maxrss, maxdiskread, and maxdiskwrite to bytes
-        spl[-3] = to_bytes(spl[-3])
+        # Extract max memory used from tresusageintot and convert to bytes
+        if not spl[-3]:
+            mem = 0
+        else:
+            mem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", spl[-3]).group(1)
+        spl[-3] = to_bytes(mem)
+        # Convert maxdiskread and maxdiskwrite to bytes
         spl[-2] = to_bytes(spl[-2])
         spl[-1] = to_bytes(spl[-1])
         lines.append(spl)
@@ -430,7 +435,7 @@ def get_sstat_values(jobid):
     # Notes
     - For maxrss, maxdiskread, and maxdiskwrite
     """
-    fmt = "jobid,maxrss,maxdiskread,maxdiskwrite"
+    fmt = "jobid,tresusageintot,maxdiskread,maxdiskwrite"
     cmd = ["sstat", "-n", "-P", "-a", "-o", fmt, "-j", jobid]
     proc = subprocess.run(cmd, capture_output = True, text = True)
     out = proc.stdout.split("\n")[:-1]
@@ -446,8 +451,13 @@ def get_sstat_values(jobid):
         if spl[0].endswith(".extern"):
             continue
         # Modify some values in order to compare or sum
-        # Convert maxrss, maxdiskread, and maxdiskwrite to bytes
-        spl[1] = to_bytes(spl[1])
+        # Extract max memory used from tresusageintot and convert to bytes
+        if not spl[1]:
+            mem = 0
+        else:
+            mem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", spl[1]).group(1)
+        spl[1] = to_bytes(mem)
+        # Convert maxdiskread and maxdiskwrite to bytes
         spl[2] = to_bytes(spl[2])
         spl[3] = to_bytes(spl[3])
         lines.append(spl)
@@ -455,7 +465,7 @@ def get_sstat_values(jobid):
     selectors = [first, max, max, max]
     vals = select_vals(lines, selectors)[1:]
     # Store values in dict
-    keys = ["maxrss_sstat", "maxdiskread_sstat", "maxdiskwrite_sstat"]
+    keys = ["maxmem_sstat", "maxdiskread_sstat", "maxdiskwrite_sstat"]
     d = dict(zip(keys, vals, strict = True))
     return d
 
@@ -547,24 +557,24 @@ def derive_values(vals):
     d["usercpu_pct"] = pct_cpu(d["usercpu"], d["totalcpu"])
     # Calculate system CPU %
     d["systemcpu_pct"] = pct_cpu(d["systemcpu"], d["totalcpu"])
-    # Format memused, maxdiskread, and maxdiskwrite depending on job state
+    # Format maxmem, maxdiskread, and maxdiskwrite depending on job state
     if "RUNNING" in d["state"] and (d["user"] == os.environ["USER"] or os.getuid() == 0):
         sstat_vals = get_sstat_values(d["jobid"])
         d.update(sstat_vals)
-        d["memused"] = d["maxrss_sstat"] * int(d["ntasks"])
-        d["memused_fmt"] = fmt_maxbytes(d["memused"])
+        d["maxmem"] = d["maxmem_sstat"]
+        d["maxmem_fmt"] = fmt_maxbytes(d["maxmem"])
         d["maxdiskread_fmt"] = fmt_maxbytes(d["maxdiskread_sstat"])
         d["maxdiskwrite_fmt"] = fmt_maxbytes(d["maxdiskwrite_sstat"])
     else:
         if re.search(r"PENDING|RUNNING", d["state"]) or d["alloctres"] == "":
-            d["memused"] = -1.0
+            d["maxmem"] = -1.0
         else:
-            d["memused"] = d["maxrss"] * int(d["ntasks"])
-        d["memused_fmt"] = fmt_maxbytes(d["memused"])
+            d["maxmem"] = d["tresusageintot"]
+        d["maxmem_fmt"] = fmt_maxbytes(d["maxmem"])
         d["maxdiskread_fmt"] = fmt_maxbytes(d["maxdiskread"])
         d["maxdiskwrite_fmt"] = fmt_maxbytes(d["maxdiskwrite"])
     # Calculate memory efficiency
-    d["memeff"] = mem_eff(d["memused"], d["allocmem"])
+    d["memeff"] = mem_eff(d["maxmem"], d["allocmem"])
     return d
 
 # Define main function to get job info
@@ -609,7 +619,7 @@ fs = [["jobid", first],
       ["totalcpu", first],
       ["usercpu", first],
       ["systemcpu", first],
-      ["maxrss", max],
+      ["tresusageintot", max],
       ["maxdiskread", max],
       ["maxdiskwrite", max]]
 
@@ -652,7 +662,7 @@ print("Used CPU time        | " + v["totalcpu_fmt"])
 print("CPU efficiency       | " + v["cpueff"])
 print("% User (computation) | " + v["usercpu_pct"])
 print("% System (I/O)       | " + v["systemcpu_pct"])
-print("Max memory used      | " + v["memused_fmt"])
+print("Max memory used      | " + v["maxmem_fmt"])
 print("Memory efficiency    | " + v["memeff"])
 print("Max disk read        | " + v["maxdiskread_fmt"])
 print("Max disk write       | " + v["maxdiskwrite_fmt"])
