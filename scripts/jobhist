@@ -13,8 +13,8 @@ This script requires:
 
 Notes:
   - Based on output from sacct
-  - Default setting is job history for past day
-  - To filter by state, use grep
+  - Default time period is past day
+  - State filter is based on current job state
 """
 
 from datetime import datetime, timedelta
@@ -41,9 +41,14 @@ jobhist -p largemem
 jobhist -u ttrojan -p main
 jobhist -u ttrojan -s 2024-07-01 -p gpu
 jobhist -a ttrojan_123
+jobhist -n sim2
+jobhist -w a01-[01-20]
+jobhist -t failed
 
 notes:
 
+default time period is past day
+state filter is based on current job state
 to view more job details, run jobinfo <jobid>
 
 support:
@@ -66,14 +71,39 @@ parser.add_argument(
     help = "query own jobs"
 )
 parser.add_argument(
+    "-n",
+    "--name",
+    help = "job name to query for history (comma-separated list)"
+)
+parser.add_argument(
+    "-w",
+    "--nodelist",
+    help = "node list to query for history (range or comma-separated list)"
+)
+parser.add_argument(
     "-p",
     "--partition",
     help = "partition to query for history (comma-separated list)"
 )
 parser.add_argument(
+    "-q",
+    "--qos",
+    help = "QOS to query for history (comma-separated list)"
+)
+parser.add_argument(
+    "-r",
+    "--reason",
+    help = "last pending reason to query for history (excluding resources and priority) (comma-separated list)"
+)
+parser.add_argument(
     "-s",
     "--start",
     help = "start date to query for history (YYYY-MM-DD)"
+)
+parser.add_argument(
+    "-t",
+    "--state",
+    help = "current job state to query for history (comma-separated list)"
 )
 parser.add_argument(
     "-u",
@@ -89,7 +119,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobhist 2.2.0")
+    print("jobhist 2.3.0")
     sys.exit(0)
 
 def mem_to_gib(mem):
@@ -161,28 +191,44 @@ def get_job_info(f, v):
 fields = "jobid,start,user,jobname,partition,state,elapsed,reqtres,alloctres"
 cmd = ["sacct", "-a", "-X", "-n", "-P", "-o", fields]
 
+tday = datetime.today()
+yday = tday - timedelta(days = 1)
+tday = tday.strftime("%Y-%m-%d")
+yday = yday.strftime("%Y-%m-%d")
+
 if args.start is not None and args.end is not None:
     cmd = cmd + ["-S", args.start, "-E", args.end]
 elif args.start is not None and args.end is None:
-    cmd = cmd + ["-S", args.start]
+    cmd = cmd + ["-S", args.start, "-E", tday]
 elif args.start is None and args.end is not None:
     print("Error: no start date given", file = sys.stderr)
     sys.exit(1)
 else:
-    date = datetime.today() - timedelta(days = 1)
-    date = date.strftime("%Y-%m-%d")
-    cmd = cmd + ["-S", date]
+    cmd = cmd + ["-S", yday, "-E", tday]
 if args.account is not None:
     cmd = cmd + ["-A", args.account]
 if args.me:
     cmd = cmd + ["-u", os.environ["USER"]]
+if args.name is not None:
+    cmd = cmd + ["--name", args.name]
+if args.nodelist is not None:
+    cmd = cmd + ["-N", args.nodelist]
 if args.partition is not None:
     cmd = cmd + ["-r", args.partition]
+if args.qos is not None:
+    cmd = cmd + ["-q", args.qos]
+if args.reason is not None:
+    cmd = cmd + ["--reason", args.reason]
 if args.user is not None:
     cmd = cmd + ["-u", args.user]
 
 proc = subprocess.run(cmd, env = {"SLURM_TIME_FORMAT":"%Y-%m-%d"}, capture_output = True, text = True)
 joblist = proc.stdout.split("\n")[:-1]
+# sacct filters job state over the given time period, which could be multiple states
+# Filter based on current job state instead
+if args.state is not None:
+    states = args.state.upper().replace(",", "|")
+    joblist = [job for job in joblist if re.search(states, job.split("|")[5])]
 
 print("----------------------------------------------------------------------------------------------------")
 print("Job ID         Startdate       User     Job Name  Partition      State     Elapsed Nodes CPUs Memory")
