@@ -162,6 +162,21 @@ def unique(x, y):
         return x
     return x + " / " + y
 
+def allv(x, y):
+    """
+    Select all values in multi-line output
+
+    # Arguments
+    - x (str): first value to compare
+    - y (str): second value to compare
+
+    # Returns
+    - str: all values (separated by |)
+    """
+    if y == "":
+        return x
+    return x + " | " + y
+
 def max_time(x, y):
     """
     Select max time value in multi-line output
@@ -381,16 +396,6 @@ def get_sacct_values(jobid, fields):
         # Skip .extern step (typically not user computation)
         if spl[0].endswith(".extern"):
             continue
-        # Modify some values in order to compare or sum
-        # Extract max memory used from tresusageintot and convert to bytes
-        if not spl[-3]:
-            mem = 0
-        else:
-            mem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", spl[-3]).group(1)
-        spl[-3] = to_bytes(mem)
-        # Convert maxdiskread and maxdiskwrite to bytes
-        spl[-2] = to_bytes(spl[-2])
-        spl[-1] = to_bytes(spl[-1])
         lines.append(spl)
     # Apply selector functions to parsed output
     selectors = [item[1] for item in fields]
@@ -433,9 +438,9 @@ def get_sstat_values(jobid):
     - dict: key-value pairs for sstat fields
 
     # Notes
-    - For maxrss, maxdiskread, and maxdiskwrite
+    - For deriving maxmem, maxdiskread, and maxdiskwrite
     """
-    fmt = "jobid,tresusageintot,maxdiskread,maxdiskwrite"
+    fmt = "jobid,tresusageintot,tresusageouttot"
     cmd = ["sstat", "-n", "-P", "-a", "-o", fmt, "-j", jobid]
     proc = subprocess.run(cmd, capture_output = True, text = True)
     out = proc.stdout.split("\n")[:-1]
@@ -450,22 +455,12 @@ def get_sstat_values(jobid):
         # Skip .extern step (typically not user computation)
         if spl[0].endswith(".extern"):
             continue
-        # Modify some values in order to compare or sum
-        # Extract max memory used from tresusageintot and convert to bytes
-        if not spl[1]:
-            mem = 0
-        else:
-            mem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", spl[1]).group(1)
-        spl[1] = to_bytes(mem)
-        # Convert maxdiskread and maxdiskwrite to bytes
-        spl[2] = to_bytes(spl[2])
-        spl[3] = to_bytes(spl[3])
         lines.append(spl)
     # Apply selector functions to parsed output (and remove job ID)
-    selectors = [first, max, max, max]
+    selectors = [first, allv, allv]
     vals = select_vals(lines, selectors)[1:]
     # Store values in dict
-    keys = ["maxmem_sstat", "maxdiskread_sstat", "maxdiskwrite_sstat"]
+    keys = ["tresusageintot", "tresusageouttot"]
     d = dict(zip(keys, vals, strict = True))
     return d
 
@@ -557,22 +552,35 @@ def derive_values(vals):
     d["usercpu_pct"] = pct_cpu(d["usercpu"], d["totalcpu"])
     # Calculate system CPU %
     d["systemcpu_pct"] = pct_cpu(d["systemcpu"], d["totalcpu"])
-    # Format maxmem, maxdiskread, and maxdiskwrite depending on job state
+    # Derive maxmem, maxdiskread, and maxdiskwrite depending on job state
+    # If job is RUNNING and user or root, use sstat values
     if "RUNNING" in d["state"] and (d["user"] == os.environ["USER"] or os.getuid() == 0):
         sstat_vals = get_sstat_values(d["jobid"])
-        d.update(sstat_vals)
-        d["maxmem"] = d["maxmem_sstat"]
-        d["maxmem_fmt"] = fmt_maxbytes(d["maxmem"])
-        d["maxdiskread_fmt"] = fmt_maxbytes(d["maxdiskread_sstat"])
-        d["maxdiskwrite_fmt"] = fmt_maxbytes(d["maxdiskwrite_sstat"])
+        d["tresusageintot"] = sstat_vals["tresusageintot"]
+        d["tresusageouttot"] = sstat_vals["tresusageouttot"]
+    # tresusage values may be empty
+    # If job is PENDING or CANCELLED/FAILED before job started
+    # If job is RUNNING but not user or root
+    if d["tresusageintot"] == "":
+        d["maxmem"] = -1.0
+        d["maxdiskread"] = -1.0
+        d["maxdiskwrite"] = -1.0
     else:
-        if re.search(r"PENDING|RUNNING", d["state"]) or d["alloctres"] == "":
-            d["maxmem"] = -1.0
-        else:
-            d["maxmem"] = d["tresusageintot"]
-        d["maxmem_fmt"] = fmt_maxbytes(d["maxmem"])
-        d["maxdiskread_fmt"] = fmt_maxbytes(d["maxdiskread"])
-        d["maxdiskwrite_fmt"] = fmt_maxbytes(d["maxdiskwrite"])
+        # Derive max memory used from tresusageintot
+        allmem = re.findall(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["tresusageintot"])
+        allmembytes = [to_bytes(mem) for mem in allmem]
+        d["maxmem"] = max(allmembytes)
+        # Derive max disk read from tresusageintot (already in bytes)
+        alldiskread = re.findall(r"disk=([0-9]+)", d["tresusageintot"])
+        alldiskread2 = [int(dr) for dr in alldiskread]
+        d["maxdiskread"] = max(alldiskread2)
+        # Derive max disk write from tresusageouttot (already in bytes)
+        alldiskwrite = re.findall(r"disk=([0-9]+)", d["tresusageouttot"])
+        alldiskwrite2 = [int(dw) for dw in alldiskwrite]
+        d["maxdiskwrite"] = max(alldiskwrite2)
+    d["maxmem_fmt"] = fmt_maxbytes(d["maxmem"])
+    d["maxdiskread_fmt"] = fmt_maxbytes(d["maxdiskread"])
+    d["maxdiskwrite_fmt"] = fmt_maxbytes(d["maxdiskwrite"])
     # Calculate memory efficiency
     d["memeff"] = mem_eff(d["maxmem"], d["allocmem"])
     return d
@@ -619,9 +627,8 @@ fs = [["jobid", first],
       ["totalcpu", first],
       ["usercpu", first],
       ["systemcpu", first],
-      ["tresusageintot", max],
-      ["maxdiskread", max],
-      ["maxdiskwrite", max]]
+      ["tresusageintot", allv],
+      ["tresusageouttot", allv]]
 
 # Run main function to get job info
 
