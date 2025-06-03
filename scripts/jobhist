@@ -119,7 +119,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobhist 2.3.0")
+    print("jobhist 2.3.1")
     sys.exit(0)
 
 def mem_to_gib(mem):
@@ -193,7 +193,7 @@ cmd = ["sacct", "-a", "-X", "-n", "-P", "-o", fields]
 
 tday = datetime.today()
 yday = tday - timedelta(days = 1)
-tday = tday.strftime("%Y-%m-%d")
+tday = tday.strftime("%Y-%m-%dT%H:%M:%S")
 yday = yday.strftime("%Y-%m-%d")
 
 if args.start is not None and args.end is not None:
