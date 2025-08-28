@@ -106,7 +106,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("noderes 1.0.3")
+    print("noderes 1.0.4")
     sys.exit(0)
 
 def memtogib(val):
@@ -184,12 +184,15 @@ def getnoderes(node):
         res["nodestateshort"] = "reserved" # can be idle, mixed, or allocated
 
     # Get CPU model
-    # On CARC clusters, the CPU model is included in ActiveFeatures and listed first
-    cpumodel = re.search(r"ActiveFeatures=(\S+)", node)
-    if cpumodel is None:
+    features = re.search(r"ActiveFeatures=(\S+)", node)
+    if features is None:
         res["cpumodel"] = "n/a"
     else:
-        res["cpumodel"] = cpumodel.group(1).split(",", maxsplit = 1)[0]
+        cpumodel = re.search(r"((epyc|xeon)[-_A-Za-z0-9]+)", features.group(1))
+        if cpumodel is None:
+            res["cpumodel"] = "n/a"
+        else:
+            res["cpumodel"] = cpumodel.group(1)
 
     # Get configured resources for node
     if re.search(r"future|unknown", res["nodestate"]):
