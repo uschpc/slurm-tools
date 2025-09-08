@@ -31,6 +31,8 @@ examples:
 
 myaccount
 myaccount ttrojan
+myaccount -c condo
+myaccount ttrojan -c condo
 
 support:
 
@@ -43,6 +45,11 @@ parser.add_argument(
     help = "user to query for account information (default = $USER)"
 )
 parser.add_argument(
+    "-c",
+    "--cluster",
+    help = "cluster to query for account information (default = local cluster)"
+)
+parser.add_argument(
     "-V",
     "--version",
     action = "store_true",
@@ -51,7 +58,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("myaccount 1.1.0")
+    print("myaccount 1.2.0")
     sys.exit(0)
 
 # Check if user exists
@@ -62,9 +69,19 @@ if "no such user" in ident.stderr:
     sys.exit(1)
 
 # Get name of cluster
-cmd = ["scontrol", "--local", "show", "config"]
-proc = subprocess.run(cmd, capture_output = True, text = True)
-cluster = re.search(r"ClusterName\s+=\s+(\S+)", proc.stdout).group(1)
+if not args.cluster:
+    cmd = ["scontrol", "--local", "show", "config"]
+    proc = subprocess.run(cmd, capture_output = True, text = True)
+    cluster = re.search(r"ClusterName\s+=\s+(\S+)", proc.stdout).group(1)
+else:
+    # Check if cluster exists
+    cmd = ["scontrol", "-M", args.cluster, "show", "config"]
+    proc = subprocess.run(cmd, capture_output = True, text = True)
+    if not proc.stdout:
+        print("Error: cluster does not exist")
+        sys.exit(1)
+    else:
+        cluster = args.cluster
 
 # Get cluster accounts
 fmt = "format=user%-10,account%-15,cluster%-10,defaultaccount%-15,qos%-11"
@@ -125,7 +142,7 @@ print("-----------------------------------------------------------------")
 print("Partition      Allowed accounts                                  ")
 print("-------------- --------------------------------------------------")
 accounts2 = "|".join(accounts)
-cmd3 = ["scontrol", "--local", "-o", "show", "partitions"]
+cmd3 = ["scontrol", "-o", "-M", cluster, "show", "partitions"]
 proc3 = subprocess.run(cmd3, capture_output = True, text = True)
 out3 = proc3.stdout.split("\n")[:-1]
 sub = [i for i in out3 if re.search(accounts2 + "|AllowAccounts=ALL", i)]
