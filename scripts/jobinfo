@@ -58,7 +58,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobinfo 2.1.0")
+    print("jobinfo 2.1.1")
     sys.exit(0)
 
 if args.jobid is None:
@@ -567,7 +567,7 @@ def derive_values(vals):
         d["maxdiskwrite"] = -1.0
     else:
         # Derive max memory used from tresusageintot
-        allmem = re.findall(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["tresusageintot"])
+        allmem = re.findall(r",mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["tresusageintot"])
         allmembytes = [to_bytes(mem) for mem in allmem]
         d["maxmem"] = max(allmembytes)
         # Derive max disk read from tresusageintot (already in bytes)
