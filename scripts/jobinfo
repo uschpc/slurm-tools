@@ -58,10 +58,10 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobinfo 2.1.1")
+    print("jobinfo 2.2.0")
     sys.exit(0)
 
-if args.jobid is None:
+if not args.jobid:
     print("Error: no job ID provided", file = sys.stderr)
     print("Usage: jobinfo [-h] [-V] [jobid]", file = sys.stderr)
     print("To find job IDs, run jobhist", file = sys.stderr)
@@ -74,7 +74,7 @@ if re.search(r",", args.jobid):
 
 # Define utility functions
 
-def parse_time(x):
+def parsetime(x):
     """
     Parse time elements from string
 
@@ -90,7 +90,7 @@ def parse_time(x):
     """
     m = re.match(r"(((?P<days>\d+)-)?(?P<hours>\d\d):)?"
                  + r"(?P<minutes>\d\d):(?P<seconds>\d\d(\.\d+)?)", x)
-    if m is None:
+    if not m:
         return 0, 0, 0, 0.0
     dd = int(m.group("days") or "0")
     hh = int(m.group("hours") or "0")
@@ -98,7 +98,7 @@ def parse_time(x):
     ss = float(m.group("seconds"))
     return dd, hh, mm, ss
 
-def to_seconds(x):
+def toseconds(x):
     """
     Convert time to seconds
 
@@ -108,10 +108,10 @@ def to_seconds(x):
     # Returns
     - float: time in seconds
     """
-    dd, hh, mm, ss = parse_time(x)
+    dd, hh, mm, ss = parsetime(x)
     return dd*24*60*60 + hh*60*60 + mm*60 + ss
 
-def to_bytes(x):
+def tobytes(x):
     """
     Convert string to bytes
 
@@ -127,14 +127,14 @@ def to_bytes(x):
     if not x:
         return -1.0
     units = {"K": 10, "M": 20, "G": 30, "T": 40, "P": 50, "E": 60}
-    scale = 2**units.get(x[-1], 0)
+    scale = 2 ** units.get(x[-1], 0)
     if scale != 1:
         x = x[:-1]
     return float(x) * scale
 
 # Define selector functions
 
-def first(x, y):
+def firstv(x, y):
     """
     Select first non-empty value in multi-line output
 
@@ -147,7 +147,7 @@ def first(x, y):
     """
     return x == "" and y or x
 
-def unique(x, y):
+def uniquev(x, y):
     """
     Select all unique values in multi-line output
 
@@ -160,7 +160,7 @@ def unique(x, y):
     """
     if y in x:
         return x
-    return x + " / " + y
+    return x + "/" + y
 
 def allv(x, y):
     """
@@ -175,9 +175,9 @@ def allv(x, y):
     """
     if y == "":
         return x
-    return x + " | " + y
+    return x + "|" + y
 
-def max_time(x, y):
+def maxtime(x, y):
     """
     Select max time value in multi-line output
 
@@ -196,7 +196,7 @@ def max_time(x, y):
         return x
     return max(x, y)
 
-def select_vals(lines, selectors):
+def selectv(lines, selectors):
     """
     Select sacct or sstat values from multi-line output
 
@@ -217,7 +217,7 @@ def select_vals(lines, selectors):
 
 # Define formatting functions
 
-def fmt_bytes(x):
+def fmtbytes(x):
     """
     Format bytes
 
@@ -229,9 +229,9 @@ def fmt_bytes(x):
     """
     units = " KMGTPE"
     e = int(math.log(x + 1, 2) / 10)
-    return f"{x / 2**(10 * e):.2f}" + units[e]
+    return f"{x / 2 ** (e * 10):.2f}" + units[e].strip()
 
-def fmt_tasks(x):
+def fmttasks(x):
     """
     Format tasks
 
@@ -247,7 +247,7 @@ def fmt_tasks(x):
         return "--"
     return x
 
-def fmt_time(x):
+def fmttime(x):
     """
     Format time
 
@@ -261,7 +261,7 @@ def fmt_time(x):
     # Value may be 0 if job is not COMPLETED
     if x == "00:00:00":
         return "--"
-    dd, hh, mm, ss = parse_time(x)
+    dd, hh, mm, ss = parsetime(x)
     if dd > 0:
         dd = f"{dd}-"
     else:
@@ -270,7 +270,7 @@ def fmt_time(x):
         return f"{dd}{hh:02d}:{mm:02d}:{int(ss):02d}"
     return f"{dd}{hh:02d}:{mm:02d}:{ss:06.3f}"
 
-def fmt_datetime(x):
+def fmtdatetime(x):
     """
     Format datetime
 
@@ -286,7 +286,7 @@ def fmt_datetime(x):
         return "--"
     return x
 
-def fmt_maxbytes(x):
+def fmtmaxbytes(x):
     """
     Format estimated max bytes
 
@@ -297,14 +297,14 @@ def fmt_maxbytes(x):
     - str: "--" (if value is not available)
     - str: formatted bytes
     """
-    # Value set to -1.0 if job not started or is RUNNING and not user or root
+    # Value set to -1.0 if job not started or is RUNNING and not user or root or not found
     if x == -1.0:
         return "--"
-    return f"{fmt_bytes(x)} (estimate)"
+    return f"{fmtbytes(x)} (estimate)"
 
 # Define calculation functions
 
-def cpu_eff(x, y):
+def cpueff(x, y):
     """
     Calculate CPU efficiency
 
@@ -316,15 +316,15 @@ def cpu_eff(x, y):
     - str: "--" (if x or y is 0)
     - str: formatted %
     """
-    cpu_used = to_seconds(x)
-    cpu_elapsed = to_seconds(y)
+    usedcpu = toseconds(x)
+    elapsedcpu = toseconds(y)
     # Total CPU time is 0 if job not COMPLETED
     # Elapsed CPU time is 0 if job not started
-    if cpu_used == 0 or cpu_elapsed == 0:
+    if usedcpu == 0 or elapsedcpu == 0:
         return "--"
-    return f"{cpu_used / cpu_elapsed * 100:5.2f}%"
+    return f"{usedcpu / elapsedcpu * 100:5.2f}%"
 
-def pct_cpu(x, y):
+def cpupct(x, y):
     """
     Calculate % of total CPU used
 
@@ -336,34 +336,35 @@ def pct_cpu(x, y):
     - str: "--" (if y is 0)
     - str: formatted %
     """
-    cpu_used = to_seconds(y)
+    usedcpu = toseconds(y)
     # Total CPU time is 0 if job not COMPLETED
-    if cpu_used == 0:
+    if usedcpu == 0:
         return "--"
-    sub_used = to_seconds(x)
-    return f"{sub_used / cpu_used * 100:5.2f}%"
+    usedsub = toseconds(x)
+    return f"{usedsub / usedcpu * 100:5.2f}%"
 
-def mem_eff(x, y):
+def memeff(x, y):
     """
     Calculate memory efficiency
 
     # Arguments
-    - x (str): estimated value for max RSS used
+    - x (str): estimated value for max memory used
     - y (str): sacct value for allocated memory
 
     # Returns
-    - str: "--" (if x is not available)
+    - str: "--" (if x or y is not available)
     - str: formatted %
     """
-    # Value set to -1.0 if job not started or is RUNNING and not user or root
-    if x == -1.0:
+    # Max mem set to -1.0 if job not started or is RUNNING and not user or root
+    # Allocated mem set to ?? if not found
+    if x == -1.0 or y == "??":
         return "--"
-    allocmem = to_bytes(y)
+    allocmem = tobytes(y)
     return f"{x / allocmem * 100:5.2f}%"
 
 # Define primary functions to get and derive job info
 
-def get_sacct_values(jobid, fields):
+def getsacctv(jobid, fields):
     """
     Get sacct values and modify as needed
 
@@ -378,10 +379,16 @@ def get_sacct_values(jobid, fields):
     fmt = ",".join(keys)
     cmd = ["sacct", "-n", "-P", "-o", fmt, "-j", jobid]
     proc = subprocess.run(cmd, capture_output = True, text = True)
-    out = proc.stdout.split("\n")[:-1]
-    if not out:
+    if not proc.stdout:
         print("Error: no such job", file = sys.stderr)
         sys.exit(1)
+    # Job names may contain \n (causing line break)
+    # Replace \n if in job name (between first | and second |)
+    name = re.search(r"\|.*?\|", proc.stdout, flags = re.DOTALL)
+    name2 = re.sub(r"\n", "n", name.group(0))
+    name3 = re.sub(r"\|.*?\|", name2, proc.stdout, count = 1, flags = re.DOTALL)
+    # Split output by line
+    out = name3.split("\n")[:-1]
     # Output returned from sacct may have multiple lines
     # Jobs that are PENDING will have one line
     # Jobs that are CANCELLED or FAILED before starting will have one line
@@ -393,18 +400,15 @@ def get_sacct_values(jobid, fields):
     lines = []
     for line in out:
         spl = line.strip().split("|")
-        # Skip .extern step (typically not user computation)
-        if spl[0].endswith(".extern"):
-            continue
         lines.append(spl)
     # Apply selector functions to parsed output
     selectors = [item[1] for item in fields]
-    vals = select_vals(lines, selectors)
+    vals = selectv(lines, selectors)
     # Store values in dict
     d = dict(zip(keys, vals, strict = True))
     return d
 
-def get_squeue_values(jobid):
+def getsqueuev(jobid):
     """
     Get squeue values and modify as needed
 
@@ -415,6 +419,7 @@ def get_squeue_values(jobid):
     - dict: key-value pairs for squeue fields
 
     # Notes
+    - For PENDING job
     - For job pending reason and dependencies
     """
     cmd = ["squeue", "-h", "-a", "-o", "%R|%E", "-j", jobid]
@@ -423,11 +428,11 @@ def get_squeue_values(jobid):
     if out[1] == "(null)":
         out[1] = ""
     # Store values in dict
-    keys = ["pending_reason", "pending_deps"]
+    keys = ["pdreason", "pddeps"]
     d = dict(zip(keys, out, strict = True))
     return d
 
-def get_sstat_values(jobid):
+def getsstatv(jobid):
     """
     Get sstat values and modify as needed
 
@@ -438,6 +443,7 @@ def get_sstat_values(jobid):
     - dict: key-value pairs for sstat fields
 
     # Notes
+    - For RUNNING job if user or root
     - For deriving maxmem, maxdiskread, and maxdiskwrite
     """
     fmt = "jobid,tresusageintot,tresusageouttot"
@@ -452,19 +458,16 @@ def get_sstat_values(jobid):
     lines = []
     for line in out:
         spl = line.strip().split("|")
-        # Skip .extern step (typically not user computation)
-        if spl[0].endswith(".extern"):
-            continue
         lines.append(spl)
     # Apply selector functions to parsed output (and remove job ID)
-    selectors = [first, allv, allv]
-    vals = select_vals(lines, selectors)[1:]
+    selectors = [firstv, allv, allv]
+    vals = selectv(lines, selectors)[1:]
     # Store values in dict
     keys = ["tresusageintot", "tresusageouttot"]
     d = dict(zip(keys, vals, strict = True))
     return d
 
-def derive_values(vals):
+def derivev(vals):
     """
     Derive other values from sacct values
 
@@ -476,31 +479,43 @@ def derive_values(vals):
     """
     d = vals.copy()
     # Add formatted values where needed
-    d["ntasks_fmt"] = fmt_tasks(d["ntasks"])
-    d["start_fmt"] = fmt_datetime(d["start"])
-    d["end_fmt"] = fmt_datetime(d["end"])
-    d["elapsed_fmt"] = fmt_time(d["elapsed"])
-    d["cputime_fmt"] = fmt_time(d["cputime"])
-    d["totalcpu_fmt"] = fmt_time(d["totalcpu"])
+    d["ntasksfmt"] = fmttasks(d["ntasks"])
+    d["startfmt"] = fmtdatetime(d["start"])
+    d["endfmt"] = fmtdatetime(d["end"])
+    d["elapsedfmt"] = fmttime(d["elapsed"])
+    d["cputimefmt"] = fmttime(d["cputime"])
+    d["totalcpufmt"] = fmttime(d["totalcpu"])
     # Format state depending on job state
     if d["state"] == "PENDING":
-        squeue_vals = get_squeue_values(d["jobid"])
-        d.update(squeue_vals)
-        if d["pending_deps"] == "":
-            d["state_fmt"] = d["state"] + " " + d["pending_reason"]
+        squeuev = getsqueuev(d["jobid"])
+        d.update(squeuev)
+        if not d["pddeps"]:
+            d["statefmt"] = d["state"] + " " + d["pdreason"]
         else:
-            d["state_fmt"] = d["state"] + " " + d["pending_reason"] + " (" + d["pending_deps"] + ")"
+            d["statefmt"] = d["state"] + " " + d["pdreason"] + " (" + d["pddeps"] + ")"
     else:
-        d["state_fmt"] = d["state"]
+        d["statefmt"] = d["state"]
     # Get requested nodes
-    d["reqnodes"] = re.search(r"node=([0-9]+)", d["reqtres"]).group(1)
+    reqnodes = re.search(r"node=([0-9]+)", d["reqtres"])
+    if not reqnodes:
+        d["reqnodes"] = "??"
+    else:
+        d["reqnodes"] = reqnodes.group(1)
     # Get requested CPUs
-    d["reqcpus"] = re.search(r"cpu=([0-9]+)", d["reqtres"]).group(1)
+    reqcpus = re.search(r"cpu=([0-9]+)", d["reqtres"])
+    if not reqcpus:
+        d["reqcpus"] = "??"
+    else:
+        d["reqcpus"] = reqcpus.group(1)
     # Get requested memory (may be in varying units)
-    d["reqmem"] = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["reqtres"]).group(1)
+    reqmem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["reqtres"])
+    if not reqmem:
+        d["reqmem"] = "??"
+    else:
+        d["reqmem"] = reqmem.group(1)
     # Get requested GPUs
     reqgpus = re.search(r"gres/gpu=([0-9]+)", d["reqtres"])
-    if reqgpus is None:
+    if not reqgpus:
         d["reqgpus"] = "0"
         d["reqgpumodels"] = "--"
         d["reqgpustr"] = d["reqgpus"]
@@ -516,7 +531,7 @@ def derive_values(vals):
             d["reqgpustr"] = d["reqgpus"] + " (" + d["reqgpumodels"]  + ")"
     # alloctres is empty if resources have not been allocated
     # If job is PENDING or CANCELLED/FAILED before job started
-    if d["alloctres"] == "":
+    if not d["alloctres"]:
         d["allocnodes"] = "--"
         d["alloccpus"] = "--"
         d["allocmem"] = "--"
@@ -525,14 +540,26 @@ def derive_values(vals):
         d["allocgpustr"] = "--"
     else:
         # Get allocated nodes
-        d["allocnodes"] = re.search(r"node=([0-9]+)", d["alloctres"]).group(1)
+        allocnodes = re.search(r"node=([0-9]+)", d["alloctres"])
+        if not allocnodes:
+            d["allocnodes"] = "??"
+        else:
+            d["allocnodes"] = allocnodes.group(1)
         # Get allocated CPUs
-        d["alloccpus"] = re.search(r"cpu=([0-9]+)", d["alloctres"]).group(1)
+        alloccpus = re.search(r"cpu=([0-9]+)", d["alloctres"])
+        if not alloccpus:
+            d["alloccpus"] = "??"
+        else:
+            d["alloccpus"] = alloccpus.group(1)
         # Get allocated memory (may be in varying units)
-        d["allocmem"] = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["alloctres"]).group(1)
+        allocmem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["alloctres"])
+        if not allocmem:
+            d["allocmem"] = "??"
+        else:
+            d["allocmem"] = allocmem.group(1)
         # Get allocated GPUs
         allocgpus = re.search(r"gres/gpu=([0-9]+)", d["alloctres"])
-        if allocgpus is None:
+        if not allocgpus:
             d["allocgpus"] = "0"
             d["allocgpumodels"] = "--"
             d["allocgpustr"] = d["allocgpus"]
@@ -547,47 +574,51 @@ def derive_values(vals):
                 d["allocgpumodels"] = ",".join(allocgpumodels)
                 d["allocgpustr"] = d["allocgpus"] + " (" + d["allocgpumodels"] + ")"
     # Calculate CPU efficiency
-    d["cpueff"] = cpu_eff(d["totalcpu"], d["cputime"])
+    d["cpueff"] = cpueff(d["totalcpu"], d["cputime"])
     # Calculate user CPU %
-    d["usercpu_pct"] = pct_cpu(d["usercpu"], d["totalcpu"])
+    d["usercpupct"] = cpupct(d["usercpu"], d["totalcpu"])
     # Calculate system CPU %
-    d["systemcpu_pct"] = pct_cpu(d["systemcpu"], d["totalcpu"])
+    d["systemcpupct"] = cpupct(d["systemcpu"], d["totalcpu"])
     # Derive maxmem, maxdiskread, and maxdiskwrite depending on job state
     # If job is RUNNING and user or root, use sstat values
     if "RUNNING" in d["state"] and (d["user"] == os.environ["USER"] or os.getuid() == 0):
-        sstat_vals = get_sstat_values(d["jobid"])
-        d["tresusageintot"] = sstat_vals["tresusageintot"]
-        d["tresusageouttot"] = sstat_vals["tresusageouttot"]
+        sstatv = getsstatv(d["jobid"])
+        d["tresusageintot"] = sstatv["tresusageintot"]
+        d["tresusageouttot"] = sstatv["tresusageouttot"]
     # tresusage values may be empty
     # If job is PENDING or CANCELLED/FAILED before job started
     # If job is RUNNING but not user or root
-    if d["tresusageintot"] == "":
+    # Derive max memory used from tresusageintot
+    allmem = re.findall(r",mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["tresusageintot"])
+    if not allmem:
         d["maxmem"] = -1.0
-        d["maxdiskread"] = -1.0
-        d["maxdiskwrite"] = -1.0
     else:
-        # Derive max memory used from tresusageintot
-        allmem = re.findall(r",mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["tresusageintot"])
-        allmembytes = [to_bytes(mem) for mem in allmem]
+        allmembytes = [tobytes(mem) for mem in allmem]
         d["maxmem"] = max(allmembytes)
-        # Derive max disk read from tresusageintot (already in bytes)
-        alldiskread = re.findall(r"disk=([0-9]+)", d["tresusageintot"])
+    # Derive max disk read from tresusageintot (already in bytes)
+    alldiskread = re.findall(r"disk=([0-9]+)", d["tresusageintot"])
+    if not alldiskread:
+        d["maxdiskread"] = -1.0
+    else:
         alldiskread2 = [int(dr) for dr in alldiskread]
         d["maxdiskread"] = max(alldiskread2)
-        # Derive max disk write from tresusageouttot (already in bytes)
-        alldiskwrite = re.findall(r"disk=([0-9]+)", d["tresusageouttot"])
+    # Derive max disk write from tresusageouttot (already in bytes)
+    alldiskwrite = re.findall(r"disk=([0-9]+)", d["tresusageouttot"])
+    if not alldiskwrite:
+        d["maxdiskwrite"] = -1.0
+    else:
         alldiskwrite2 = [int(dw) for dw in alldiskwrite]
         d["maxdiskwrite"] = max(alldiskwrite2)
-    d["maxmem_fmt"] = fmt_maxbytes(d["maxmem"])
-    d["maxdiskread_fmt"] = fmt_maxbytes(d["maxdiskread"])
-    d["maxdiskwrite_fmt"] = fmt_maxbytes(d["maxdiskwrite"])
+    d["maxmemfmt"] = fmtmaxbytes(d["maxmem"])
+    d["maxdiskreadfmt"] = fmtmaxbytes(d["maxdiskread"])
+    d["maxdiskwritefmt"] = fmtmaxbytes(d["maxdiskwrite"])
     # Calculate memory efficiency
-    d["memeff"] = mem_eff(d["maxmem"], d["allocmem"])
+    d["memeff"] = memeff(d["maxmem"], d["allocmem"])
     return d
 
 # Define main function to get job info
 
-def get_job_info(jobid, fields):
+def getjobinfo(jobid, fields):
     """
     Get job info values
 
@@ -598,41 +629,41 @@ def get_job_info(jobid, fields):
     # Returns
     - dict: key-value pairs for job info
     """
-    vals = get_sacct_values(jobid, fields)
-    vals2 = derive_values(vals)
+    vals = getsacctv(jobid, fields)
+    vals2 = derivev(vals)
     return vals2
 
 # Specify sacct fields to query and associated selector functions
 
-fs = [["jobid", first],
-      ["jobname", first],
-      ["user", first],
-      ["account", first],
-      ["workdir", first],
-      ["cluster", first],
-      ["partition", first],
-      ["nodelist", first],
+fs = [["jobid", firstv],
+      ["jobname", firstv],
+      ["user", firstv],
+      ["account", firstv],
+      ["workdir", firstv],
+      ["cluster", firstv],
+      ["partition", firstv],
+      ["nodelist", firstv],
       ["ntasks", max],
-      ["reqtres", first],
-      ["alloctres", first],
-      ["state", unique],
-      ["exitcode", first],
-      ["submit", first],
+      ["reqtres", firstv],
+      ["alloctres", firstv],
+      ["state", uniquev],
+      ["exitcode", firstv],
+      ["submit", firstv],
       ["start", min],
-      ["end", max_time],
-      ["planned", first],
-      ["timelimit", max_time],
-      ["elapsed", first],
-      ["cputime", first],
-      ["totalcpu", first],
-      ["usercpu", first],
-      ["systemcpu", first],
+      ["end", maxtime],
+      ["planned", firstv],
+      ["timelimit", maxtime],
+      ["elapsed", firstv],
+      ["cputime", firstv],
+      ["totalcpu", firstv],
+      ["usercpu", firstv],
+      ["systemcpu", firstv],
       ["tresusageintot", allv],
       ["tresusageouttot", allv]]
 
 # Run main function to get job info
 
-v = get_job_info(args.jobid, fs)
+v = getjobinfo(args.jobid, fs)
 
 # Print table of selected key-value pairs
 
@@ -643,33 +674,33 @@ print("Account              | " + v["account"])
 print("Working directory    | " + v["workdir"])
 print("Cluster              | " + v["cluster"])
 print("Partition            | " + v["partition"])
-print("State                | " + v["state_fmt"])
+print("State                | " + v["statefmt"])
 print("Exit code            | " + v["exitcode"])
-if v["state_fmt"] == "PENDING" or v["alloctres"] == "":
+if v["statefmt"] == "PENDING" or not v["alloctres"]:
     print("Nodes                | " + v["reqnodes"])
-    print("Tasks                | " + v["ntasks_fmt"])
+    print("Tasks                | " + v["ntasksfmt"])
     print("CPUs                 | " + v["reqcpus"])
     print("Memory               | " + v["reqmem"])
     print("GPUs                 | " + v["reqgpustr"])
 else:
     print("Nodes                | " + v["allocnodes"])
-    print("Tasks                | " + v["ntasks_fmt"])
+    print("Tasks                | " + v["ntasksfmt"])
     print("CPUs                 | " + v["alloccpus"])
     print("Memory               | " + v["allocmem"])
     print("GPUs                 | " + v["allocgpustr"])
 print("Nodelist             | " + v["nodelist"])
 print("Submit time          | " + v["submit"])
-print("Start time           | " + v["start_fmt"])
-print("End time             | " + v["end_fmt"])
+print("Start time           | " + v["startfmt"])
+print("End time             | " + v["endfmt"])
 print("Wait time            | " + v["planned"])
 print("Reserved walltime    | " + v["timelimit"])
-print("Elapsed walltime     | " + v["elapsed_fmt"])
-print("Elapsed CPU walltime | " + v["cputime_fmt"])
-print("Used CPU time        | " + v["totalcpu_fmt"])
+print("Elapsed walltime     | " + v["elapsedfmt"])
+print("Elapsed CPU walltime | " + v["cputimefmt"])
+print("Used CPU time        | " + v["totalcpufmt"])
 print("CPU efficiency       | " + v["cpueff"])
-print("% User (computation) | " + v["usercpu_pct"])
-print("% System (I/O)       | " + v["systemcpu_pct"])
-print("Max memory used      | " + v["maxmem_fmt"])
+print("% User (computation) | " + v["usercpupct"])
+print("% System (I/O)       | " + v["systemcpupct"])
+print("Max memory used      | " + v["maxmemfmt"])
 print("Memory efficiency    | " + v["memeff"])
-print("Max disk read        | " + v["maxdiskread_fmt"])
-print("Max disk write       | " + v["maxdiskwrite_fmt"])
+print("Max disk read        | " + v["maxdiskreadfmt"])
+print("Max disk write       | " + v["maxdiskwritefmt"])
