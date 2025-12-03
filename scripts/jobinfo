@@ -58,7 +58,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobinfo 2.2.0")
+    print("jobinfo 2.2.1")
     sys.exit(0)
 
 if not args.jobid:
@@ -176,6 +176,27 @@ def allv(x, y):
     if y == "":
         return x
     return x + "|" + y
+
+def maxint(x, y):
+    """
+    Select max integer value in multi-line output
+
+    # Arguments
+    - x (str): first value to compare
+    - y (str): second value to compare
+
+    # Returns
+    - str: max integer value
+    """
+    if not x:
+        xint = 0
+    else:
+        xint = int(x)
+    if not y:
+        yint = 0
+    else:
+        yint = int(y)
+    return str(max(xint, yint))
 
 def maxtime(x, y):
     """
@@ -643,7 +664,7 @@ fs = [["jobid", firstv],
       ["cluster", firstv],
       ["partition", firstv],
       ["nodelist", firstv],
-      ["ntasks", max],
+      ["ntasks", maxint],
       ["reqtres", firstv],
       ["alloctres", firstv],
       ["state", uniquev],
