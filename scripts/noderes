@@ -22,7 +22,8 @@ import re
 import subprocess
 import sys
 
-# Set up arguments and options
+# Set up arguments and options ###########################################################
+
 parser = argparse.ArgumentParser(
     prog = "noderes",
     formatter_class = argparse.RawDescriptionHelpFormatter,
@@ -34,7 +35,7 @@ noderes
 noderes -a
 noderes -c
 noderes -p gpu
-noderes -p debug,gpu
+noderes -p main,oneweek
 noderes -s idle
 noderes -s idle,mixed
 noderes -p gpu -s idle
@@ -106,43 +107,48 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("noderes 1.0.4")
+    print("noderes 1.1.0")
     sys.exit(0)
 
-def memtogib(val):
+# Define functions #######################################################################
+
+def memtogib(mem):
     """
     Convert memory value to GiB
 
     # Arguments
-    - val: str value for memory
+    - mem (str): memory value
 
     # Returns
     - int: memory value in GiB
-    - None: if unit not found
+    - str: "??" if unit not found
     """
-    if re.search(r"T", val):
-        return int(float(val[:-1]) * 1024)
-    if re.search(r"G", val):
-        return int(float(val[:-1]))
-    if re.search(r"M", val):
-        return int(float(val[:-1]) / 1024)
-    if re.search(r"K", val):
-        return int(float(val[:-1]) / 1024 / 1024)
-    return None
+    m = float(mem[:-1])
+    if mem.endswith("T"):
+        return int(m * 1024)
+    if mem.endswith("G"):
+        return int(m)
+    if mem.endswith("M"):
+        return int(m / 1024)
+    if mem.endswith("K"):
+        return int(m / 1024**2)
+    if mem[-1].isdigit():
+        return int(mem / 1024**3)
+    return "??"
 
 def getnoderes(node):
     """
     Get information about node resources
 
     # Arguments
-    - node: single line of node information
-            from "scontrol --oneliner show node" output
+    - node (str): single line of node information
+                  from "scontrol --oneliner show node" output
 
     # Returns
     - dict: resource information for node
     """
     # Initialize dict to store results
-    res = {
+    d = {
         "nodename":"",
         "partition":"",
         "nodestate":"",
@@ -164,116 +170,149 @@ def getnoderes(node):
     partition = re.search(r"Partitions=(\S+)", node)
     # Some nodes may not be assigned partitions yet
     if partition is None:
-        res["partition"] = "none"
+        d["partition"] = "none"
     else:
-        res["partition"] = partition.group(1)
+        d["partition"] = partition.group(1)
 
     # Get node name
-    res["nodename"] = re.search(r"NodeName=(\S+)", node).group(1)
+    d["nodename"] = re.search(r"NodeName=(\S+)", node).group(1)
 
     # Get node state
-    res["nodestate"] = re.search(r"State=(\S+)", node).group(1).lower()
+    d["nodestate"] = re.search(r"State=(\S+)", node).group(1).lower()
     # Starting with Slurm 21.08, format is base_state+flag
     # For ease of printing, only use base_state with some exceptions
-    res["nodestateshort"] = res["nodestate"].split("+", maxsplit = 1)[0]
-    if re.search(r"drain", res["nodestate"]):
-        res["nodestateshort"] = "drain" # special type of idle
-    if re.search(r"maintenance", res["nodestate"]):
-        res["nodestateshort"] = "maint" # can be idle, mixed, or allocated
-    if re.search(r"reserved", res["nodestate"]):
-        res["nodestateshort"] = "reserved" # can be idle, mixed, or allocated
+    d["nodestateshort"] = d["nodestate"].split("+", maxsplit = 1)[0]
+    if re.search(r"drain", d["nodestate"]):
+        # Special type of idle
+        d["nodestateshort"] = "drain"
+    if re.search(r"maintenance", d["nodestate"]):
+        # Can be idle, mixed, or allocated
+        d["nodestateshort"] = "maint"
+    if re.search(r"reserved", d["nodestate"]):
+        # Can be idle, mixed, or allocated
+        d["nodestateshort"] = "reserved"
 
     # Get CPU model
     features = re.search(r"ActiveFeatures=(\S+)", node)
-    if features is None:
-        res["cpumodel"] = "n/a"
+    if not features:
+        d["cpumodel"] = "n/a"
     else:
-        cpumodel = re.search(r"((epyc|xeon)[-_A-Za-z0-9]+)", features.group(1))
-        if cpumodel is None:
-            res["cpumodel"] = "n/a"
+        cpumodel = re.search(r"((epyc|xeon)[-_a-zA-Z0-9]+)", features.group(1))
+        if not cpumodel:
+            d["cpumodel"] = "n/a"
         else:
-            res["cpumodel"] = cpumodel.group(1)
+            d["cpumodel"] = cpumodel.group(1)
 
     # Get configured resources for node
-    if re.search(r"future|unknown", res["nodestate"]):
-        res["cfgtrescpu"] = 0
-        res["cfgtresmem"] = 0
-        res["cfgtresgpu"] = 0
-        res["gpumodel"] = "n/a"
+    if re.search(r"future|unknown", d["nodestate"]):
+        d["cfgtrescpu"] = 0
+        d["cfgtresmem"] = 0
+        d["cfgtresgpu"] = 0
+        d["gpumodel"] = "n/a"
     else:
         cfgtres = re.search(r"CfgTRES=(\S+)", node).group(1)
         # Get CPUs
-        res["cfgtrescpu"] = int(re.search(r"cpu=([0-9]+)", cfgtres).group(1))
+        cfgtrescpu = re.search(r"cpu=([0-9]+)", cfgtres)
+        if not cfgtrescpu:
+            d["cfgtrescpu"] = "??"
+        else:
+            d["cfgtrescpu"] = int(cfgtrescpu.group(1))
         # Get memory (may be in varying units)
-        res["cfgtresmem"] = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", cfgtres).group(1)
-        # Convert memory value to GiB
-        res["cfgtresmem"] = memtogib(res["cfgtresmem"])
-        # Get memory reserved for Slurm daemons
-        memspeclimit = re.search(r"MemSpecLimit=([0-9]+)", node).group(1)
-        # Always configured in MiB, convert to GiB
-        memspeclimit = int(float(memspeclimit) / 1024)
-        # Subtract reserved memory from cfgtresmem
-        res["cfgtresmem"] = res["cfgtresmem"] - memspeclimit
+        cfgtresmem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", cfgtres)
+        if not cfgtresmem:
+            d["cfgtresmem"] = "??"
+        else:
+            d["cfgtresmem"] = memtogib(cfgtresmem.group(1))
+            if d["cfgtresmem"] != "??":
+                # Get memory reserved for Slurm daemons
+                memspeclimit = re.search(r"MemSpecLimit=([0-9]+)", node)
+                if not memspeclimit:
+                    memspeclimit = 0
+                else:
+                    # Always configured in MiB, convert to GiB
+                    memspeclimit = int(float(memspeclimit.group(1)) / 1024)
+                # Subtract reserved memory from cfgtresmem
+                d["cfgtresmem"] = d["cfgtresmem"] - memspeclimit
         # Get GPUs
         cfgtresgpu = re.search(r"gres/gpu=([0-9]+)", cfgtres)
-        if cfgtresgpu is None:
-            res["cfgtresgpu"] = 0
+        if not cfgtresgpu:
+            d["cfgtresgpu"] = 0
         else:
-            res["cfgtresgpu"] = int(cfgtresgpu.group(1))
+            d["cfgtresgpu"] = int(cfgtresgpu.group(1))
         # Get GPU model
         gpumodel = re.search(r"gres/gpu:([a-zA-Z0-9]+)", cfgtres)
-        if res["cfgtresgpu"] == 0:
-            res["gpumodel"] = "--"
-        elif gpumodel is None:
-            res["gpumodel"] = "n/a"
+        if d["cfgtresgpu"] == 0:
+            d["gpumodel"] = "--"
+        elif not gpumodel:
+            d["gpumodel"] = "n/a"
         else:
-            res["gpumodel"] = gpumodel.group(1)
+            d["gpumodel"] = gpumodel.group(1)
 
     # Get allocated resources for node and calculate free resources
-    if re.search(r"down|error|future|unknown", res["nodestate"]):
+    if re.search(r"down|error|future|unknown", d["nodestate"]):
         # Set to 0 in order to sum later for args.summary option
-        res["alloctrescpu"] = 0
-        res["alloctresmem"] = 0
-        res["alloctresgpu"] = 0
-        res["freecpus"] = 0
-        res["freemem"] = 0
-        res["freegpus"] = 0
-    elif re.search(r"idle", res["nodestate"]):
-        res["alloctrescpu"] = 0
-        res["alloctresmem"] = 0
-        res["alloctresgpu"] = 0
-        res["freecpus"] = res["cfgtrescpu"]
-        res["freemem"] = res["cfgtresmem"]
-        res["freegpus"] = res["cfgtresgpu"]
+        d["alloctrescpu"] = 0
+        d["alloctresmem"] = 0
+        d["alloctresgpu"] = 0
+        d["freecpus"] = 0
+        d["freemem"] = 0
+        d["freegpus"] = 0
+    elif re.search(r"idle", d["nodestate"]):
+        d["alloctrescpu"] = 0
+        d["alloctresmem"] = 0
+        d["alloctresgpu"] = 0
+        d["freecpus"] = d["cfgtrescpu"]
+        d["freemem"] = d["cfgtresmem"]
+        d["freegpus"] = d["cfgtresgpu"]
     else:
         # For node in mixed or allocated state, get allocated values
         # A node is in allocated state only if all CPUs are allocated
         alloctres = re.search(r"AllocTRES=(\S+)", node).group(1)
         # Get CPUs
-        res["alloctrescpu"] = int(re.search(r"cpu=([0-9]+)", alloctres).group(1))
+        alloctrescpu = re.search(r"cpu=([0-9]+)", alloctres)
+        if not alloctrescpu:
+            d["alloctrescpu"] = "??"
+        else:
+            d["alloctrescpu"] = int(alloctrescpu.group(1))
         # Get memory (may be in varying units)
-        res["alloctresmem"] = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", alloctres).group(1)
-        # Convert memory value to GiB
-        res["alloctresmem"] = memtogib(res["alloctresmem"])
+        alloctresmem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", alloctres)
+        if not alloctresmem:
+            d["alloctresmem"] = "??"
+        else:
+            d["alloctresmem"] = memtogib(alloctresmem.group(1))
         # Get GPUs
         alloctresgpu = re.search(r"gres/gpu=([0-9]+)", alloctres)
-        if alloctresgpu is None:
-            res["alloctresgpu"] = 0
+        if not alloctresgpu:
+            d["alloctresgpu"] = 0
         else:
-            res["alloctresgpu"] = int(alloctresgpu.group(1))
-        # Calculate free values
-        res["freecpus"] = res["cfgtrescpu"] - res["alloctrescpu"]
-        res["freemem"] = res["cfgtresmem"] - res["alloctresmem"]
-        res["freegpus"] = res["cfgtresgpu"] - res["alloctresgpu"]
+            d["alloctresgpu"] = int(alloctresgpu.group(1))
+        # Calculate free CPUs
+        if d["cfgtrescpu"] == "??" or d["alloctrescpu"] == "??":
+            d["freecpus"] = "??"
+        else:
+            d["freecpus"] = d["cfgtrescpu"] - d["alloctrescpu"]
+        # Calculate free memory
+        if d["cfgtresmem"] == "??" or d["alloctresmem"] == "??":
+            d["freemem"] = "??"
+        else:
+            d["freemem"] = d["cfgtresmem"] - d["alloctresmem"]
+        # Calculate free GPUs
+        if d["cfgtresgpu"] == "??" or d["alloctresgpu"] == "??":
+            d["freegpus"] = "??"
+        else:
+            d["freegpus"] = d["cfgtresgpu"] - d["alloctresgpu"]
 
-    return res
+    return d
+
+# Get node resource information ##########################################################
 
 # Get scontrol information for all nodes in cluster
 cmd = ["scontrol", "--oneliner", "show", "node"]
 proc = subprocess.run(cmd, capture_output = True, text = True)
+if not proc.stdout:
+    print("No nodes found")
+    sys.exit(0)
 nodelist = proc.stdout.split("\n")[:-1]
-# Remove Endeavour nmlhpcc partition (AllocTres output does not include mem)
-nodelist = [n for n in nodelist if not re.search(r"Partitions=nmlhpcc", n)]
 
 # Get resource information for each node
 reslist = [getnoderes(n) for n in nodelist]
@@ -291,20 +330,21 @@ if args.gpus:
 
 # Filter nodes by CPU or GPU model
 if args.model:
-    lst = args.model.split(",")
-    reslist = [n for n in reslist if any(x in (n["cpumodel"] + "," + n["gpumodel"]) for x in lst)]
+    fm = args.model.split(",")
+    reslist = [n for n in reslist if any(x in (n["cpumodel"] + "," + n["gpumodel"]) for x in fm)]
 
 # Filter nodes by partition
 if args.partition:
-    lst = args.partition.split(",")
-    reslist = [n for n in reslist if any(x in n["partition"] for x in lst)]
+    fp = args.partition.split(",")
+    reslist = [n for n in reslist if any(x in n["partition"] for x in fp)]
 
 # Filter nodes by state
 if args.state:
-    lst = args.state.split(",")
-    reslist = [n for n in reslist if any(x in n["nodestateshort"] for x in lst)]
+    fs = args.state.split(",")
+    reslist = [n for n in reslist if any(x in n["nodestateshort"] for x in fs)]
 
-# Print results
+# Print results ##########################################################################
+
 if not args.summary:
     if not args.configured and not args.allocated:
         # Print free resources for nodes (default)
@@ -389,7 +429,7 @@ else:
             partlist.append(list(v))
         # Sum and print information by partition
         for p in partlist:
-            sums = {
+            s = {
                 "partition":p[0]["partition"],
                 "cfgtresgpu":0,
                 "freecpus":0,
@@ -397,17 +437,17 @@ else:
                 "freegpus":0
             }
             for n in p:
-                sums["cfgtresgpu"] += n["cfgtresgpu"]
-                sums["freecpus"] += n["freecpus"]
-                sums["freemem"] += n["freemem"]
-                sums["freegpus"] += n["freegpus"]
+                s["cfgtresgpu"] += n["cfgtresgpu"]
+                s["freecpus"] += n["freecpus"]
+                s["freemem"] += n["freemem"]
+                s["freegpus"] += n["freegpus"]
             # For partitions without GPUs replace 0 with --
-            if sums["cfgtresgpu"] == 0:
-                sums["freegpus"] = "--"
-            print(f"{sums['partition'][:12]:<12}" + " " +
-                  f"{sums['freecpus']:>4}" + " " +
-                  f"{sums['freemem']:>5}" + "G " +
-                  f"{sums['freegpus']:>4}")
+            if s["cfgtresgpu"] == 0:
+                s["freegpus"] = "--"
+            print(f"{s['partition'][:12]:<12}" + " " +
+                  f"{s['freecpus']:>4}" + " " +
+                  f"{s['freemem']:>5}" + "G " +
+                  f"{s['freegpus']:>4}")
     else:
         # Summarize information by partition and GPU model
         print("--------------------------------------")
@@ -421,7 +461,7 @@ else:
             partgpulist.append(list(v))
         # Sum and print information by partition and GPU model
         for p in partgpulist:
-            sums = {
+            s = {
                 "partition":p[0]["partition"],
                 "gpumodel":p[0]["gpumodel"],
                 "freecpus":0,
@@ -429,11 +469,11 @@ else:
                 "freegpus":0
             }
             for n in p:
-                sums["freecpus"] += n["freecpus"]
-                sums["freemem"] += n["freemem"]
-                sums["freegpus"] += n["freegpus"]
-            print(f"{sums['partition'][:12]:<12}" + " " +
-                  f"{sums['gpumodel']:>8}" + " " +
-                  f"{sums['freecpus']:>4}" + " " +
-                  f"{sums['freemem']:>5}" + "G " +
-                  f"{sums['freegpus']:>4}")
+                s["freecpus"] += n["freecpus"]
+                s["freemem"] += n["freemem"]
+                s["freegpus"] += n["freegpus"]
+            print(f"{s['partition'][:12]:<12}" + " " +
+                  f"{s['gpumodel']:>8}" + " " +
+                  f"{s['freecpus']:>4}" + " " +
+                  f"{s['freemem']:>5}" + "G " +
+                  f"{s['freegpus']:>4}")
