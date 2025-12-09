@@ -1,0 +1,574 @@
+#!/usr/bin/env python3
+
+"""
+jobeff
+
+View job efficiency information
+
+This script requires:
+  - Python 3.10+ (for the zip() strict = True option)
+  - Slurm (any recent version should work)
+  - Slurm configured with:
+    - JobAcctGatherType=jobacct_gather/linux or jobacct_gather/cgroup
+
+Notes:
+  - Based on output from sacct
+  - Default time period is past day
+  - State filter is based on current job state
+"""
+
+from datetime import datetime, timedelta
+from statistics import quantiles
+import argparse
+import os
+import re
+import subprocess
+import sys
+
+# Set up arguments and options ###########################################################
+
+parser = argparse.ArgumentParser(
+    prog = "jobeff",
+    formatter_class = argparse.RawDescriptionHelpFormatter,
+    description = "View job efficiency information",
+    epilog = """\
+examples:
+
+jobeff 123456
+jobeff 123456,123457,123567
+jobeff --me
+jobeff -u ttrojan
+jobeff -a ttrojan_123
+jobeff -n sim
+jobeff -w a01-01
+jobeff -p largemem
+jobeff -s 2025-10-01
+jobeff -s 2025-09-01 -e 2025-09-30
+jobeff -t completed,failed,timeout
+jobeff --me -lc -70
+jobeff --me -lm 50
+jobeff --me -z
+
+notes:
+
+to view all jobs in a job array, use the base array job ID
+to view more job details, run jobinfo <jobid>
+
+support:
+
+https://github.com/uschpc/slurm-tools/issues"""
+)
+parser.add_argument(
+    "jobids",
+    nargs = "?",
+    help = "job IDs to query (comma-separated list)"
+)
+parser.add_argument(
+    "-a",
+    "--account",
+    help = "account to query for history (comma-separated list)"
+)
+parser.add_argument(
+    "-e",
+    "--end",
+    help = "end date to query for history (YYYY-MM-DD)"
+)
+parser.add_argument(
+    "-lc",
+    "--levelcpu",
+    type = int,
+    help = "only report jobs below(-)/above(+) given CPU efficiency level"
+)
+parser.add_argument(
+    "-lm",
+    "--levelmem",
+    type = int,
+    help = "only report jobs below(-)/above(+) given memory efficiency level"
+)
+parser.add_argument(
+    "--me",
+    action = "store_true",
+    help = "query own jobs"
+)
+parser.add_argument(
+    "-n",
+    "--name",
+    help = "job name (partial or full) to query for history (comma-separated list)"
+)
+parser.add_argument(
+    "-w",
+    "--nodelist",
+    help = "node list to query for history (range or comma-separated list)"
+)
+parser.add_argument(
+    "-p",
+    "--partition",
+    help = "partition to query for history (comma-separated list)"
+)
+parser.add_argument(
+    "-q",
+    "--qos",
+    help = "QOS to query for history (comma-separated list)"
+)
+parser.add_argument(
+    "-s",
+    "--start",
+    help = "start date to query for history (YYYY-MM-DD)"
+)
+parser.add_argument(
+    "-t",
+    "--state",
+    help = "current job state to query for history (comma-separated list)"
+)
+parser.add_argument(
+    "-z",
+    "--summary",
+    action = "store_true",
+    help = "print five-number summaries instead of table"
+)
+parser.add_argument(
+    "-u",
+    "--user",
+    help = "user to query for history (comma-separated list)"
+)
+parser.add_argument(
+    "-V",
+    "--version",
+    action = "store_true",
+    help = "print version"
+)
+args = parser.parse_args()
+
+# Require either job IDs or filter options
+if not any(vars(args).values()):
+    print("Error: no job IDs or filter options given", file = sys.stderr)
+    print("See jobeff -h for usage", file = sys.stderr)
+    sys.exit(1)
+
+if args.version:
+    print("jobeff 1.0.0")
+    sys.exit(0)
+
+# Define utility functions ###############################################################
+
+def parsetime(x):
+    """
+    Parse time elements from string
+
+    # Arguments
+    - x (str): sacct value for time
+
+    # Returns
+    - tuple: days, hours, minutes, seconds
+
+    # Notes
+    - Slurm time format is dd-hh:mm:ss.sss
+    - Value will at least include mm:ss
+    """
+    m = re.match(r"(((?P<days>\d+)-)?(?P<hours>\d\d):)?"
+                 + r"(?P<minutes>\d\d):(?P<seconds>\d\d(\.\d+)?)", x)
+    if not m:
+        return 0, 0, 0, 0.0
+    dd = int(m.group("days") or "0")
+    hh = int(m.group("hours") or "0")
+    mm = int(m.group("minutes"))
+    ss = float(m.group("seconds"))
+    return dd, hh, mm, ss
+
+def toseconds(x):
+    """
+    Convert time to seconds
+
+    # Arguments
+    - x (str): sacct value for time
+
+    # Returns
+    - float: time in seconds
+    """
+    dd, hh, mm, ss = parsetime(x)
+    return dd*24*60*60 + hh*60*60 + mm*60 + ss
+
+def tobytes(x):
+    """
+    Convert string to bytes
+
+    # Arguments
+    - x (str): sacct value for size
+
+    # Returns
+    - float: -1.0 (if x is empty)
+    - float: size in bytes
+    """
+    # Some values may be empty if job is RUNNING
+    # Return -1.0 for comparison purposes
+    if not x:
+        return -1.0
+    units = {"K": 10, "M": 20, "G": 30, "T": 40, "P": 50, "E": 60}
+    scale = 2**units.get(x[-1], 0)
+    if scale != 1:
+        x = x[:-1]
+    return float(x) * scale
+
+# Define selector functions ##############################################################
+
+def firstv(x, y):
+    """
+    Select first non-empty value in multi-line output
+
+    # Arguments
+    - x (str): first value to compare
+    - y (str): second value to compare
+
+    # Returns
+    - str: first non-empty value
+    """
+    return x == "" and y or x
+
+def allv(x, y):
+    """
+    Select all values in multi-line output
+
+    # Arguments
+    - x (str): first value to compare
+    - y (str): second value to compare
+
+    # Returns
+    - str: all values (separated by |)
+    """
+    if y == "":
+        return x
+    return x + "|" + y
+
+def maxtime(x, y):
+    """
+    Select max time value in multi-line output
+
+    # Arguments
+    - x (str): first value to compare
+    - y (str): second value to compare
+
+    # Returns
+    - str: max time value
+    """
+    if "UNLIMITED" in [x, y]:
+        return "UNLIMITED"
+    if x in ["", "INVALID"]:
+        return y
+    if y in ["", "INVALID"]:
+        return x
+    return max(x, y)
+
+def selectv(lines, selectors):
+    """
+    Select sacct values from multi-line output
+
+    # Arguments
+    - lines (list): one list of parsed values per line of output
+    - selectors (list): selector functions
+
+    # Returns
+    - list: selected sacct values
+    """
+    # Extract first line of values
+    vals = lines[0]
+    # If more lines, run selector functions
+    for line in lines[1:]:
+        for i, selector in enumerate(selectors):
+            vals[i] = selector(vals[i], line[i])
+    return vals
+
+# Define calculation functions ###########################################################
+
+def cpueff(x, y):
+    """
+    Calculate CPU efficiency
+
+    # Arguments
+    - x (str): sacct value for totalcpu
+    - y (str): sacct value for cputime
+
+    # Returns
+    - str: "--" (if x or y is 0)
+    - str: formatted %
+    """
+    usedcpu = toseconds(x)
+    elapsedcpu = toseconds(y)
+    # Total CPU time is 0 if job not COMPLETED
+    # Elapsed CPU time is 0 if job not started
+    if usedcpu == 0 or elapsedcpu == 0:
+        return "--"
+    return f"{usedcpu / elapsedcpu * 100:5.2f}%"
+
+def memeff(x, y):
+    """
+    Calculate memory efficiency
+
+    # Arguments
+    - x (str): estimated value for max memory used
+    - y (str): sacct value for allocated memory
+
+    # Returns
+    - str: "--" (if x or y is not available)
+    - str: formatted %
+    """
+    # Value set to -1.0 if job not started or is RUNNING and not user or root
+    # Allocated mem set to ?? if not found
+    if x == -1.0 or y == "??":
+        return "--"
+    allocmem = tobytes(y)
+    return f"{x / allocmem * 100:5.2f}%"
+
+# Define functions to get and derive job info ############################################
+
+def getsacctv(scmd, fields):
+    """
+    Get sacct values and modify as needed
+
+    # Arguments
+    - scmd (str): sacct command stem
+    - fields (list): sacct fields to query and associated selector functions
+
+    # Returns
+    - list: list of dicts (one dict per job)
+
+    # Notes
+    - Minimize sacct calls to reduce stress on Slurm
+    - Assumes sacct -n -p options are used
+    - Assumes saact jobid,state fields are present
+    """
+    # Derive sacct command and run
+    keys = [item[0] for item in fields]
+    fmt = ",".join(keys)
+    scmd = scmd + ["-o", fmt]
+    proc = subprocess.run(scmd, env = {"SLURM_TIME_FORMAT":"%Y-%m-%d"}, capture_output = True, text = True)
+    if not proc.stdout:
+        print("No jobs found")
+        sys.exit(0)
+    # Job names may contain \n (causing line break)
+    # So splitting by \n does not necessarily split output by line
+    # First remove all \n and split by |, then group line values using number of fields
+    out = re.sub(r"\n", "", proc.stdout)[:-1]
+    out2 = out.split("|")
+    n = len(fields)
+    out3 = [out2[i:i + n] for i in range(0, len(out2), n)]
+    # Get unique job IDs
+    jobids = []
+    for line in out3:
+        jobid = line[0].split(".")[0]
+        jobids.append(jobid)
+    ujobids = list(set(jobids))
+    # Create dict to store lines grouped by job ID
+    d = {jobid: [] for jobid in ujobids}
+    # Match line to job ID and append to corresponding list in dict
+    for line in out3:
+        jobid = line[0].split(".")[0]
+        d[jobid].append(line)
+    # Output returned from sacct may have multiple lines for each job
+    # Jobs that are PENDING will have one line
+    # Jobs that are CANCELLED or FAILED before starting will have one line
+    # Otherwise, jobs that start will have multiple lines
+    # Main job line, .batch or .interactive line, and .extern line
+    # If srun is used, one line for each srun call
+    # Select one value or combine multiple values depending on field
+    selectors = [item[1] for item in fields]
+    out4 = []
+    for jobout in d.values():
+        vals = selectv(jobout, selectors)
+        v = dict(zip(keys, vals, strict = True))
+        # Replace state CANCELLED by ... with just CANCELLED
+        if "CANCELLED" in v["state"]:
+            v["state"] = "CANCELLED"
+        out4.append(v)
+    # Sort by job ID
+    out5 = sorted(out4, key = lambda x: x["jobid"])
+    return out5
+
+def derivev(vals):
+    """
+    Derive other values from sacct values
+
+    # Arguments
+    - vals (dict): key-value pairs for sacct fields
+
+    # Returns
+    - dict: key-value pairs for original and derived fields
+    """
+    d = vals.copy()
+    # alloctres is empty if resources have not been allocated
+    # If job is PENDING or CANCELLED/FAILED before job started
+    if d["alloctres"] == "":
+        d["allocmem"] = "--"
+    else:
+        # Get allocated memory (may be in varying units)
+        allocmem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["alloctres"])
+        if allocmem:
+            d["allocmem"] = allocmem.group(1)
+        else:
+            d["allocmem"] = "??"
+    # Calculate CPU efficiency
+    d["cpueff"] = cpueff(d["totalcpu"], d["cputime"])
+    # tresusageintot values may be empty
+    # If job is PENDING or CANCELLED/FAILED before job started
+    # If job is RUNNING but not user or root
+    # Derive max memory used from tresusageintot
+    allmem = re.findall(r",mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["tresusageintot"])
+    if not allmem:
+        d["maxmem"] = -1.0
+    else:
+        allmembytes = [tobytes(mem) for mem in allmem]
+        d["maxmem"] = max(allmembytes)
+    # Calculate memory efficiency
+    d["memeff"] = memeff(d["maxmem"], d["allocmem"])
+    return d
+
+# Define main function to get job efficiency values ######################################
+
+def getjobeff(scmd, fields):
+    """
+    Get job efficiency values
+
+    # Arguments
+    - scmd (str): sacct command stem
+    - fields (list): sacct fields to query and associated selector functions
+
+    # Returns
+    - list: list of dicts (one dict per job)
+    """
+    sacctv = getsacctv(scmd, fields)
+    eff = []
+    for jobout in sacctv:
+        out = derivev(jobout)
+        eff.append(out)
+    return eff
+
+# Get job efficiency values ##############################################################
+
+# Specify sacct fields to query and associated selector functions
+fs = [["jobid", firstv],
+      ["state", firstv],
+      ["user", firstv],
+      ["jobname", firstv],
+      ["alloctres", firstv],
+      ["cputime", firstv],
+      ["totalcpu", firstv],
+      ["tresusageintot", allv]]
+
+# Derive sacct command stem based on given arguments
+if args.jobids:
+    cmd = ["sacct", "-n", "-p", "-j", args.jobids]
+else:
+    cmd = ["sacct", "-n", "-p", "-a"]
+
+    tday = datetime.today()
+    yday = tday - timedelta(days = 1)
+    tday = tday.strftime("%Y-%m-%dT%H:%M:%S")
+    yday = yday.strftime("%Y-%m-%d")
+
+    if args.start and args.end:
+        cmd = cmd + ["-S", args.start, "-E", args.end]
+    elif args.start and not args.end:
+        cmd = cmd + ["-S", args.start, "-E", tday]
+    elif not args.start and args.end:
+        print("Error: no start date given", file = sys.stderr)
+        sys.exit(1)
+    else:
+        cmd = cmd + ["-S", yday, "-E", tday]
+    if args.account:
+        cmd = cmd + ["-A", args.account]
+    if args.me:
+        cmd = cmd + ["-u", os.environ["USER"]]
+    if args.nodelist:
+        cmd = cmd + ["-N", args.nodelist]
+    if args.partition:
+        cmd = cmd + ["-r", args.partition]
+    if args.qos:
+        cmd = cmd + ["-q", args.qos]
+    if args.user:
+        cmd = cmd + ["-u", args.user]
+
+# Run main function to get job efficiency values
+res = getjobeff(cmd, fs)
+
+# Filter by job name using partial or full match
+if args.name:
+    names = args.name.replace(",", "|")
+    res = [job for job in res if re.search(names, job["jobname"])]
+
+# sacct filters job state over the given time period, which could be multiple states
+# Filter based on current job state instead
+if args.state:
+    states = args.state.upper().replace(",", "|")
+    res = [job for job in res if re.search(states, job["state"])]
+
+# Filter by efficiency levels
+if args.levelcpu:
+    res = [job for job in res if job["cpueff"] != "--"]
+    if args.levelcpu < 0:
+        res = [job for job in res if float(job["cpueff"][:-1]) <= float(args.levelcpu * -1)]
+    else:
+        res = [job for job in res if float(job["cpueff"][:-1]) >= float(args.levelcpu)]
+if args.levelmem:
+    res = [job for job in res if job["memeff"] != "--"]
+    if args.levelmem < 0:
+        res = [job for job in res if float(job["memeff"][:-1]) <= float(args.levelmem * -1)]
+    else:
+        res = [job for job in res if float(job["memeff"][:-1]) >= float(args.levelmem)]
+
+# Exit if no jobs found after filters
+if not res:
+    print("No jobs found")
+    sys.exit(0)
+
+# Print results ##########################################################################
+
+if not args.summary:
+    # Print table of job efficiency values
+    print("------------------------------------------------------------------")
+    print("Job ID             State       CPU Efficiency    Memory Efficiency")
+    print("------------- ---------- -------------------- --------------------")
+    for job in res:
+        # Create percentage visuals using line of | up to length 10
+        if job["cpueff"] == "--":
+            vcpueff = ""
+        else:
+            n1 = round(float(job["cpueff"][:-1]) / 10)
+            vcpueff = job["cpueff"] + " [" + f"{('|' * n1)[:10]:<10}" + "]"
+        if job["memeff"] == "--":
+            vmemeff = ""
+        else:
+            n2 = round(float(job["memeff"][:-1]) / 10)
+            vmemeff = job["memeff"] + " [" + f"{('|' * n2)[:10]:<10}" + "]"
+        print(f"{job['jobid'][:13]:<13}" + " " +
+              f"{job['state'][:10]:>10}" + " " +
+              f"{vcpueff[:20]:>20}" + " " +
+              f"{vmemeff[:20]:>20}")
+else:
+    # Print five-number summaries for job efficiency values
+    # Exclude jobs without efficiency values
+    res = [job for job in res if job["cpueff"] != "--"]
+    res = [job for job in res if job["memeff"] != "--"]
+    if not res or len(res) == 1:
+        print("No jobs found to summarize")
+        sys.exit(0)
+    allcpueff = [float(job["cpueff"][:-1]) for job in res]
+    allmemeff = [float(job["memeff"][:-1]) for job in res]
+    qcpu = [round(q, 2) for q in quantiles(allcpueff, n = 4)]
+    qmem = [round(q, 2) for q in quantiles(allmemeff, n = 4)]
+    print("----------------------------------------------------")
+    print("Five-number summaries for job efficiencies          ")
+    print("----------------------------------------------------")
+    print("Number of jobs: " + str(len(res)))
+    print("")
+    print("        Min     Q1      Med     Q3      Max")
+    print("CPU:   " + " " +
+          f"{min(allcpueff):>6}" + "  " +
+          f"{qcpu[0]:>6}" + "  " +
+          f"{qcpu[1]:>6}" + "  " +
+          f"{qcpu[2]:>6}" + "  " +
+          f"{max(allcpueff):>6}")
+    print("Memory:" + " " +
+          f"{min(allmemeff):>6}" + "  " +
+          f"{qmem[0]:>6}" + "  " +
+          f"{qmem[1]:>6}" + "  " +
+          f"{qmem[2]:>6}" + "  " +
+          f"{max(allmemeff):>6}")
