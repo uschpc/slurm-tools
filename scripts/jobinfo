@@ -25,7 +25,8 @@ import re
 import subprocess
 import sys
 
-# Set up arguments and options
+# Set up arguments and options ###########################################################
+
 parser = argparse.ArgumentParser(
     prog = "jobinfo",
     formatter_class = argparse.RawDescriptionHelpFormatter,
@@ -58,7 +59,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobinfo 2.2.1")
+    print("jobinfo 2.2.2")
     sys.exit(0)
 
 if not args.jobid:
@@ -72,7 +73,7 @@ if re.search(r",", args.jobid):
     print("Usage: jobinfo [-h] [-V] [jobid]", file = sys.stderr)
     sys.exit(1)
 
-# Define utility functions
+# Define utility functions ###############################################################
 
 def parsetime(x):
     """
@@ -127,12 +128,12 @@ def tobytes(x):
     if not x:
         return -1.0
     units = {"K": 10, "M": 20, "G": 30, "T": 40, "P": 50, "E": 60}
-    scale = 2 ** units.get(x[-1], 0)
+    scale = 2**units.get(x[-1], 0)
     if scale != 1:
         x = x[:-1]
     return float(x) * scale
 
-# Define selector functions
+# Define selector functions ##############################################################
 
 def firstv(x, y):
     """
@@ -236,7 +237,7 @@ def selectv(lines, selectors):
             vals[i] = selector(vals[i], line[i])
     return vals
 
-# Define formatting functions
+# Define formatting functions ############################################################
 
 def fmtbytes(x):
     """
@@ -250,7 +251,7 @@ def fmtbytes(x):
     """
     units = " KMGTPE"
     e = int(math.log(x + 1, 2) / 10)
-    return f"{x / 2 ** (e * 10):.2f}" + units[e].strip()
+    return f"{x / 2**(e * 10):.2f}" + units[e].strip()
 
 def fmttasks(x):
     """
@@ -323,7 +324,7 @@ def fmtmaxbytes(x):
         return "--"
     return f"{fmtbytes(x)} (estimate)"
 
-# Define calculation functions
+# Define calculation functions ###########################################################
 
 def cpueff(x, y):
     """
@@ -383,7 +384,7 @@ def memeff(x, y):
     allocmem = tobytes(y)
     return f"{x / allocmem * 100:5.2f}%"
 
-# Define primary functions to get and derive job info
+# Define functions to get and derive job info ############################################
 
 def getsacctv(jobid, fields):
     """
@@ -398,18 +399,18 @@ def getsacctv(jobid, fields):
     """
     keys = [item[0] for item in fields]
     fmt = ",".join(keys)
-    cmd = ["sacct", "-n", "-P", "-o", fmt, "-j", jobid]
+    cmd = ["sacct", "-n", "-p", "-o", fmt, "-j", jobid]
     proc = subprocess.run(cmd, capture_output = True, text = True)
     if not proc.stdout:
         print("Error: no such job", file = sys.stderr)
         sys.exit(1)
     # Job names may contain \n (causing line break)
-    # Replace \n if in job name (between first | and second |)
-    name = re.search(r"\|.*?\|", proc.stdout, flags = re.DOTALL)
-    name2 = re.sub(r"\n", "n", name.group(0))
-    name3 = re.sub(r"\|.*?\|", name2, proc.stdout, count = 1, flags = re.DOTALL)
-    # Split output by line
-    out = name3.split("\n")[:-1]
+    # So splitting by \n does not necessarily split output by line
+    # First remove all \n and split by |, then group line values using number of fields
+    out = re.sub(r"\n", "", proc.stdout)[:-1]
+    out2 = out.split("|")
+    n = len(fields)
+    out3 = [out2[i:i + n] for i in range(0, len(out2), n)]
     # Output returned from sacct may have multiple lines
     # Jobs that are PENDING will have one line
     # Jobs that are CANCELLED or FAILED before starting will have one line
@@ -417,14 +418,8 @@ def getsacctv(jobid, fields):
     # Main job line, .batch or .interactive line, and .extern line
     # If srun is used, one line for each srun call
     # Select one value or combine multiple values depending on field
-    # Parse values from each line into list and store in list of lists
-    lines = []
-    for line in out:
-        spl = line.strip().split("|")
-        lines.append(spl)
-    # Apply selector functions to parsed output
     selectors = [item[1] for item in fields]
-    vals = selectv(lines, selectors)
+    vals = selectv(out3, selectors)
     # Store values in dict
     d = dict(zip(keys, vals, strict = True))
     return d
@@ -637,7 +632,7 @@ def derivev(vals):
     d["memeff"] = memeff(d["maxmem"], d["allocmem"])
     return d
 
-# Define main function to get job info
+# Define main function to get job info ###################################################
 
 def getjobinfo(jobid, fields):
     """
@@ -654,8 +649,9 @@ def getjobinfo(jobid, fields):
     vals2 = derivev(vals)
     return vals2
 
-# Specify sacct fields to query and associated selector functions
+# Get job info ###########################################################################
 
+# Specify sacct fields to query and associated selector functions
 fs = [["jobid", firstv],
       ["jobname", firstv],
       ["user", firstv],
@@ -683,10 +679,9 @@ fs = [["jobid", firstv],
       ["tresusageouttot", allv]]
 
 # Run main function to get job info
-
 v = getjobinfo(args.jobid, fs)
 
-# Print table of selected key-value pairs
+# Print selected key-value pairs #########################################################
 
 print("Job ID               | " + v["jobid"])
 print("Job Name             | " + v["jobname"])
