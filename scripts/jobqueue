@@ -14,7 +14,8 @@ import argparse
 import subprocess
 import sys
 
-# Set up arguments and options
+# Set up arguments and options ###########################################################
+
 parser = argparse.ArgumentParser(
     prog = "jobqueue",
     formatter_class = argparse.RawDescriptionHelpFormatter,
@@ -99,30 +100,37 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobqueue 1.3.0")
+    print("jobqueue 1.3.1")
     sys.exit(0)
 
-print("-----------------------------------------------------------------------------------------")
-print("Job ID             User     Job Name  Partition    State     Elapsed     Nodelist(Reason)")
-print("------------ ---------- ------------ ---------- -------- ----------- --------------------")
+# Run squeue command and print results ###################################################
+
+# Specify squeue fields to query and output format
 fmt = "%12i %.10u %.12j %.10P %.8T %.11M %.20R"
+
+# Derive squeue command based on given arguments
 cmd = ["squeue", "-h", "-o", fmt]
-if args.account is not None:
+if args.account:
     cmd = cmd + ["-A", args.account]
 if args.all:
     cmd = cmd + ["--all"]
 if args.me:
     cmd = cmd + ["--me"]
-if args.name is not None:
+if args.name:
     cmd = cmd + ["-n", args.name]
-if args.nodelist is not None:
+if args.nodelist:
     cmd = cmd + ["-w", args.nodelist]
-if args.partition is not None:
+if args.partition:
     cmd = cmd + ["-p", args.partition]
-if args.reservation is not None:
+if args.reservation:
     cmd = cmd + ["-R", args.reservation]
-if args.state is not None:
+if args.state:
     cmd = cmd + ["-t", args.state]
-if args.user is not None:
+if args.user:
     cmd = cmd + ["-u", args.user]
+
+# Run squeue command and print results
+print("-----------------------------------------------------------------------------------------")
+print("Job ID             User     Job Name  Partition    State     Elapsed     Nodelist(Reason)")
+print("------------ ---------- ------------ ---------- -------- ----------- --------------------")
 subprocess.run(cmd)
