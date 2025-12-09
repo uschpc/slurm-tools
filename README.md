@@ -1,10 +1,10 @@
 # Slurm CLI tools
 
-A collection of CLI tools used on CARC HPC clusters for various Slurm tasks and queries.
+A collection of CLI tools for various tasks and queries on Slurm clusters.
 
 ## Installation
 
-The CLI tools are Python scripts that rely only on the Python standard library and use the argparse library. Some scripts may need to be modified to run on other HPC clusters, depending on the Python version available, Slurm configuration, etc. Check the notes in each script for more information.
+The CLI tools are Python scripts that rely only on the Python standard library. All scripts will run with Python 3.10+. The scripts should run on most Slurm clusters, but they depend on certain Slurm configuration. Check the notes in each script for more information.
 
 To install, simply clone the repo:
 
@@ -12,7 +12,7 @@ To install, simply clone the repo:
 git clone --depth 1 https://github.com/uschpc/slurm-tools.git
 ```
 
-The scripts will be downloaded with execute permissions. If desired, move the scripts to another directory, such as a directory on `PATH`. If needed, load a compatible version of Python and/or change the hashbang to use a compatible Python executable.
+The scripts will be downloaded with execute permissions. If desired, move the scripts to another directory, such as a directory on `PATH`. If needed, load a compatible version of Python or change the hashbang in the scripts to use a compatible Python executable.
 
 ## Usage
 
@@ -53,18 +53,19 @@ shared         ALL
 
 ### noderes
 
-View available resources on nodes.
+View available resources (free or configured) on nodes.
 
 ```
-$ noderes -p debug
+$ noderes -p largemem
 -------------------------------------------------------------------
 Node      Partition     State         CPU      GPU Free   Free Free
                                     Model    Model CPUs Memory GPUs
 ------ ------------ --------- ----------- -------- ---- ------ ----
-b11-09        debug      idle   epyc-7313      a40   32   248G    2
-d05-41        debug      idle   xeon-4116       --   24   185G   --
-d05-42        debug      idle   xeon-4116       --   24   185G   --
-e23-02        debug     mixed xeon-2640v4     p100    8    75G    2
+a01-10     largemem     mixed   epyc-7513       --   22    78G   --
+a02-10     largemem allocated   epyc-7513       --    0    54G   --
+a03-10     largemem     mixed   epyc-7513       --   12    50G   --
+a04-10     largemem  reserved   epyc-7513       --   62    38G   --
+b17-13     largemem allocated   epyc-9354       --    0     0G   --
 ```
 
 ### jobqueue
@@ -78,7 +79,7 @@ Job ID             User     Job Name  Partition    State     Elapsed     Nodelis
 ------------ ---------- ------------ ---------- -------- ----------- --------------------
 7453378            jesp Run_do52bran   largemem  PENDING        0:00 (QOSMaxMemoryPerUser
 7453379            jesp Run_do6b.job   largemem  PENDING        0:00 (QOSMaxMemoryPerUser
-7473836         ttrojan sys/dashboar   largemem  RUNNING     2:42:28               a04-10
+7473836         ttrojan  ood/jupyter   largemem  RUNNING     2:42:28               a04-10
 7449562            snet run_study_4x   largemem  RUNNING  2-23:17:10               a02-10
 7453377            jesp Run_do51bran   largemem  RUNNING  2-17:02:07               a01-10
 7470944          huy435    rfmixchr1   largemem  RUNNING    21:18:51        a02-10,a04-10
@@ -113,7 +114,7 @@ User                 | ttrojan
 Account              | ttrojan_123
 Working directory    | /project/ttrojan_123/sim
 Cluster              | discovery
-Partition            | debug
+Partition            | main
 State                | COMPLETED
 Exit code            | 0:0
 Nodes                | 2
@@ -129,7 +130,7 @@ Wait time            | 00:00:01
 Reserved walltime    | 00:10:00
 Elapsed walltime     | 00:01:08
 Elapsed CPU walltime | 00:36:16
-Used CPU time        | 00:35:18
+Used CPU time        | 00:35:18.342
 CPU efficiency       | 97.37%
 % User (computation) | 96.35%
 % System (I/O)       |  3.65%
@@ -137,6 +138,23 @@ Max memory used      | 64.74G (estimate)
 Memory efficiency    | 53.95%
 Max disk read        | 14.42M (estimate)
 Max disk write       | 1.04M (estimate)
+```
+
+### jobeff
+
+View job efficiency information.
+
+```
+$ jobeff -p largemem
+------------------------------------------------------------------
+Job ID             State       CPU Efficiency    Memory Efficiency
+------------- ---------- -------------------- --------------------
+1131130        CANCELLED  42.02% [||||      ]  50.03% [|||||     ]
+1140921        COMPLETED   9.78% [|         ]   4.15% [          ]
+1140925          RUNNING                                          
+1189016           FAILED  87.30% [||||||||| ]  85.03% [||||||||| ]
+1201010       OUT_OF_MEM  86.08% [||||||||| ]  99.69% [||||||||||]
+1201035          TIMEOUT  23.00% [||        ]  73.35% [|||||||   ]
 ```
 
 ## License
