@@ -21,7 +21,8 @@ import re
 import subprocess
 import sys
 
-# Set up arguments and options
+# Set up arguments and options ###########################################################
+
 parser = argparse.ArgumentParser(
     prog = "myaccount",
     formatter_class = argparse.RawDescriptionHelpFormatter,
@@ -58,15 +59,17 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("myaccount 1.2.0")
+    print("myaccount 1.2.1")
     sys.exit(0)
 
 # Check if user exists
 cmdid = ["id", args.user]
 ident = subprocess.run(cmdid, capture_output = True, text = True)
 if "no such user" in ident.stderr:
-    print("Error: user does not exist")
+    print("Error: user does not exist", file = sys.stderr)
     sys.exit(1)
+
+# Get cluster accounts ###################################################################
 
 # Get name of cluster
 if not args.cluster:
@@ -78,22 +81,28 @@ else:
     cmd = ["scontrol", "-M", args.cluster, "show", "config"]
     proc = subprocess.run(cmd, capture_output = True, text = True)
     if not proc.stdout:
-        print("Error: cluster does not exist")
+        print("Error: cluster does not exist", file = sys.stderr)
         sys.exit(1)
     else:
         cluster = args.cluster
 
-# Get cluster accounts
+# Run sacctmgr command and capture output
 fmt = "format=user%-10,account%-15,cluster%-10,defaultaccount%-15,qos%-11"
 cmd = ["sacctmgr", "-n", "-s", "list", "user", args.user, fmt, "cluster=" + cluster]
 proc = subprocess.run(cmd, capture_output = True, text = True)
+if not proc.stdout:
+    print("No cluster accounts found for " + args.user)
+    sys.exit(0)
+
+# Process output to get cluster accounts
 out = proc.stdout.split("\n")[:-1]
 if not re.search(cluster, proc.stdout):
     print("No cluster accounts found for " + args.user)
     sys.exit(0)
 accounts = [line.split()[1] for line in out]
 
-# Display table of cluster accounts
+# Print table of cluster accounts ########################################################
+
 print("-----------------------------------------------------------------")
 print("Cluster accounts                                                 ")
 print("-----------------------------------------------------------------")
@@ -103,7 +112,8 @@ for line in out:
     print(line)
 print("")
 
-# Display table of cluster account limits and usage
+# Print table of cluster account limits and usage ########################################
+
 print("-----------------------------------------------------------------")
 print("Cluster account service units (SUs)                              ")
 print("-----------------------------------------------------------------")
@@ -112,16 +122,18 @@ print("----------------- --------------- --------------- ---------------")
 fmt2 = "account,grptresmins,grptresraw"
 cmd2 = ["sshare", "-P", "-o", fmt2, "-M", cluster]
 proc2 = subprocess.run(cmd2, capture_output = True, text = True)
+if not proc2:
+    print("No information found")
 out2 = proc2.stdout.split("\n")
 for account in accounts:
     sub = [i for i in out2 if re.search(account, i)]
     sub = sub[0].split("|")[1:3]
     res = [re.search(r"billing=([0-9]+)", i) for i in sub]
-    if res[0] is not None and res[1] is not None:
+    if res[0] and res[1]:
         limit = res[0].group(1)
         usage = res[1].group(1)
         remaining = str(int(limit) - int(usage))
-    elif res[1] is not None:
+    elif res[1]:
         limit = "n/a"
         usage = res[1].group(1)
         remaining = "n/a"
@@ -135,7 +147,8 @@ for account in accounts:
           f"{remaining[:15]:<15}")
 print("")
 
-# Display table of allowed cluster partitions
+# Print table of allowed cluster partitions ##############################################
+
 print("-----------------------------------------------------------------")
 print("Allowed cluster partitions                                       ")
 print("-----------------------------------------------------------------")
@@ -144,6 +157,8 @@ print("-------------- --------------------------------------------------")
 accounts2 = "|".join(accounts)
 cmd3 = ["scontrol", "-o", "-M", cluster, "show", "partitions"]
 proc3 = subprocess.run(cmd3, capture_output = True, text = True)
+if not proc3:
+    print("No information found")
 out3 = proc3.stdout.split("\n")[:-1]
 sub = [i for i in out3 if re.search(accounts2 + "|AllowAccounts=ALL", i)]
 partitions = [re.search(r"PartitionName=(\S+)", i).group(1) for i in sub]
