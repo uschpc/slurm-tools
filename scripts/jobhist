@@ -24,7 +24,8 @@ import re
 import subprocess
 import sys
 
-# Set up arguments and options
+# Set up arguments and options ###########################################################
+
 parser = argparse.ArgumentParser(
     prog = "jobhist",
     formatter_class = argparse.RawDescriptionHelpFormatter,
@@ -73,7 +74,7 @@ parser.add_argument(
 parser.add_argument(
     "-n",
     "--name",
-    help = "job name to query for history (comma-separated list)"
+    help = "job name (partial or full) to query for history (comma-separated list)"
 )
 parser.add_argument(
     "-w",
@@ -119,147 +120,198 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobhist 2.3.1")
+    print("jobhist 2.4.0")
     sys.exit(0)
 
-def mem_to_gib(mem):
+# Define functions #######################################################################
+
+def memtogib(mem):
     """
     Convert memory value to GiB
 
     # Arguments
-    - mem: str for memory value
+    - mem (str): memory value
 
     # Returns
     - str: memory value in GiB
-    - None: if unit not found
+    - str: "??" if unit not found
     """
-    v = float(mem[:-1])
+    m = float(mem[:-1])
     if mem.endswith("T"):
-        return str(int(v * 1024)) + "G"
+        return str(int(m * 1024)) + "G"
     if mem.endswith("G"):
-        return str(int(v)) + "G"
+        return str(int(m)) + "G"
     if mem.endswith("M"):
-        return str(int(v / 1024)) + "G"
+        return str(int(m / 1024)) + "G"
     if mem.endswith("K"):
-        return str(int(v / 1024 / 1024)) + "G"
-    return None
+        return str(int(m / 1024**2)) + "G"
+    if mem[-1].isdigit():
+        return str(int(mem / 1024**3)) + "G"
+    return "??"
 
-def get_job_info(f, v):
+def derivev(fields, values):
     """
-    Parse and derive job info values
+    Derive job info values from sacct values
 
     # Arguments
-    - f: str of job info fields used for sacct -o
-    - v: str of job info values from sacct -X -P output
+    - fields (str): job info fields used for sacct -o
+    - values (list): job info values from sacct -X -p output
 
     # Returns
     - dict: job info key-value pairs
 
     # Notes
-    - Assumes sacct -X -P -o options are used
-    - Assumes certain fields are present: state,reqtres,alloctres
+    - Assumes sacct -X -p -o options are used
+    - Assumes sacct state,reqtres,alloctres fields are present
     """
     # Create dict from keys and values
-    keys = f.split(",")
-    values = v.split("|")
+    keys = fields.split(",")
     d = dict(zip(keys, values, strict = True))
     # Replace state CANCELLED by ... with just CANCELLED
     if "CANCELLED" in d["state"]:
         d["state"] = "CANCELLED"
     # Get requested nodes
-    d["reqnodes"] = re.search(r"node=([0-9]+)", d["reqtres"]).group(1)
+    reqnodes = re.search(r"node=([0-9]+)", d["reqtres"])
+    if not reqnodes:
+        d["reqnodes"] = "??"
+    else:
+        d["reqnodes"] = reqnodes.group(1)
     # Get requested CPUs
-    d["reqcpus"] = re.search(r"cpu=([0-9]+)", d["reqtres"]).group(1)
+    reqcpus = re.search(r"cpu=([0-9]+)", d["reqtres"])
+    if not reqcpus:
+        d["reqcpus"] = "??"
+    else:
+        d["reqcpus"] = reqcpus.group(1)
     # Get requested memory (may be in varying units)
-    d["reqmem"] = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["reqtres"]).group(1)
-    d["reqmem"] = mem_to_gib(d["reqmem"])
-    # alloctres may be empty in some cases (e.g., job is cancelled before resources are allocated)
-    if d["alloctres"] == "":
+    reqmem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["reqtres"])
+    if not reqmem:
+        d["reqmem"] = "??"
+    else:
+        d["reqmem"] = memtogib(reqmem.group(1))
+    # alloctres is empty if resources have not been allocated
+    # If job is PENDING or CANCELLED/FAILED before job started
+    if not d["alloctres"]:
         d["allocnodes"] = "--"
         d["alloccpus"] = "--"
         d["allocmem"] = "--"
     else:
         # Get allocated nodes
-        d["allocnodes"] = re.search(r"node=([0-9]+)", d["alloctres"]).group(1)
+        allocnodes = re.search(r"node=([0-9]+)", d["alloctres"])
+        if not allocnodes:
+            d["allocnodes"] = "??"
+        else:
+            d["allocnodes"] = allocnodes.group(1)
         # Get allocated CPUs
-        d["alloccpus"] = re.search(r"cpu=([0-9]+)", d["alloctres"]).group(1)
+        alloccpus = re.search(r"cpu=([0-9]+)", d["alloctres"])
+        if not alloccpus:
+            d["alloccpus"] = "??"
+        else:
+            d["alloccpus"] = alloccpus.group(1)
         # Get allocated memory (may be in varying units)
-        d["allocmem"] = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["alloctres"]).group(1)
-        d["allocmem"] = mem_to_gib(d["allocmem"])
+        allocmem = re.search(r"mem=([0-9]+.[0-9]+[A-Z]|[0-9]+[A-Z])", d["alloctres"])
+        if not allocmem:
+            d["allocmem"] = "??"
+        else:
+            d["allocmem"] = memtogib(allocmem.group(1))
     return d
 
-fields = "jobid,start,user,jobname,partition,state,elapsed,reqtres,alloctres"
-cmd = ["sacct", "-a", "-X", "-n", "-P", "-o", fields]
+# Get sacct values #######################################################################
 
+# Specify sacct fields to query
+fs = "jobid,start,user,jobname,partition,state,elapsed,reqtres,alloctres"
+
+# Derive sacct command based on given arguments
+cmd = ["sacct", "-a", "-X", "-n", "-p", "-o", fs]
 tday = datetime.today()
 yday = tday - timedelta(days = 1)
 tday = tday.strftime("%Y-%m-%dT%H:%M:%S")
 yday = yday.strftime("%Y-%m-%d")
-
-if args.start is not None and args.end is not None:
+if args.start and args.end:
     cmd = cmd + ["-S", args.start, "-E", args.end]
-elif args.start is not None and args.end is None:
+elif args.start and not args.end:
     cmd = cmd + ["-S", args.start, "-E", tday]
-elif args.start is None and args.end is not None:
+elif not args.start and args.end:
     print("Error: no start date given", file = sys.stderr)
     sys.exit(1)
 else:
     cmd = cmd + ["-S", yday, "-E", tday]
-if args.account is not None:
+if args.account:
     cmd = cmd + ["-A", args.account]
 if args.me:
     cmd = cmd + ["-u", os.environ["USER"]]
-if args.name is not None:
-    cmd = cmd + ["--name", args.name]
-if args.nodelist is not None:
+if args.nodelist:
     cmd = cmd + ["-N", args.nodelist]
-if args.partition is not None:
+if args.partition:
     cmd = cmd + ["-r", args.partition]
-if args.qos is not None:
+if args.qos:
     cmd = cmd + ["-q", args.qos]
-if args.reason is not None:
+if args.reason:
     cmd = cmd + ["--reason", args.reason]
-if args.user is not None:
+if args.user:
     cmd = cmd + ["-u", args.user]
 
+# Run sacct command and capture output
 proc = subprocess.run(cmd, env = {"SLURM_TIME_FORMAT":"%Y-%m-%d"}, capture_output = True, text = True)
-joblist = proc.stdout.split("\n")[:-1]
+if not proc.stdout:
+    print("No jobs found")
+    sys.exit(0)
+
+# Job names may contain \n (causing line break)
+# So splitting by \n does not necessarily split output by line
+# First remove all \n and split by |, then group line values using number of fields
+out = re.sub(r"\n", "", proc.stdout)[:-1]
+out2 = out.split("|")
+n = len(fs.split(","))
+joblist = [out2[i:i + n] for i in range(0, len(out2), n)]
+
+# Filter by job name using partial or full match
+if args.name:
+    names = args.name.replace(",", "|")
+    joblist = [job for job in joblist if re.search(names, job[3])]
+
 # sacct filters job state over the given time period, which could be multiple states
 # Filter based on current job state instead
-if args.state is not None:
+if args.state:
     states = args.state.upper().replace(",", "|")
-    joblist = [job for job in joblist if re.search(states, job.split("|")[5])]
+    joblist = [job for job in joblist if re.search(states, job[5])]
+
+# Exit if no jobs found after filters
+if not joblist:
+    print("No jobs found")
+    sys.exit(0)
+
+# Process sacct values and print results #################################################
 
 print("----------------------------------------------------------------------------------------------------")
 print("Job ID         Startdate       User     Job Name  Partition      State     Elapsed Nodes CPUs Memory")
 print("------------- ---------- ---------- ------------ ---------- ---------- ----------- ----- ---- ------")
 for job in joblist:
-    info = get_job_info(fields, job)
+    v = derivev(fs, job)
     # Print requested resources in some cases
-    if (info["state"] == "PENDING"
-        # Job cancelled before resources are allocated
-        or (info["state"] == "CANCELLED" and info["alloctres"] == "")
-        # Job submission failed (e.g., requested node configuration is not available)
-        or (info["state"] == "FAILED" and info["start"] == "None")):
-        print(f"{info['jobid'][:13]:<13}"
-              + " " + f"{info['start'][:10]:>10}"
-              + " " + f"{info['user'][:10]:>10}"
-              + " " + f"{info['jobname'][:12].strip():>12}"
-              + " " + f"{info['partition'][:10]:>10}"
-              + " " + f"{info['state'][:10]:>10}"
-              + " " + f"{info['elapsed'][:11]:>11}"
-              + " " + f"{info['reqnodes'][:5]:>5}"
-              + " " + f"{info['reqcpus'][:4]:>4}"
-              + " " + f"{info['reqmem'][:6]:>6}")
+    if (v["state"] == "PENDING"
+        # If job is CANCELLED before resources are allocated
+        or (v["state"] == "CANCELLED" and v["alloctres"] == "")
+        # If job submission FAILED (e.g., requested node configuration is not available)
+        or (v["state"] == "FAILED" and v["start"] == "None")):
+        print(f"{v['jobid'][:13]:<13}" + " " +
+              f"{v['start'][:10]:>10}" + " " +
+              f"{v['user'][:10]:>10}" + " " +
+              f"{v['jobname'][:12].strip():>12}" + " " +
+              f"{v['partition'][:10]:>10}" + " " +
+              f"{v['state'][:10]:>10}" + " " +
+              f"{v['elapsed'][:11]:>11}" + " " +
+              f"{v['reqnodes'][:5]:>5}" + " " +
+              f"{v['reqcpus'][:4]:>4}" + " " +
+              f"{v['reqmem'][:6]:>6}")
     # Print allocated resources in all other cases
     else:
-        print(f"{info['jobid'][:13]:<13}"
-              + " " + f"{info['start'][:10]:>10}"
-              + " " + f"{info['user'][:10]:>10}"
-              + " " + f"{info['jobname'][:12].strip():>12}"
-              + " " + f"{info['partition'][:10]:>10}"
-              + " " + f"{info['state'][:10].strip():>10}"
-              + " " + f"{info['elapsed'][:11]:>11}"
-              + " " + f"{info['allocnodes'][:5]:>5}"
-              + " " + f"{info['alloccpus'][:4]:>4}"
-              + " " + f"{info['allocmem'][:6]:>6}")
+        print(f"{v['jobid'][:13]:<13}" + " " +
+              f"{v['start'][:10]:>10}" + " " +
+              f"{v['user'][:10]:>10}" + " " +
+              f"{v['jobname'][:12].strip():>12}" + " " +
+              f"{v['partition'][:10]:>10}" + " " +
+              f"{v['state'][:10].strip():>10}" + " " +
+              f"{v['elapsed'][:11]:>11}" + " " +
+              f"{v['allocnodes'][:5]:>5}" + " " +
+              f"{v['alloccpus'][:4]:>4}" + " " +
+              f"{v['allocmem'][:6]:>6}")
