@@ -129,11 +129,12 @@ End time             | 2024-01-26T14:57:32
 Wait time            | 00:00:01
 Reserved walltime    | 00:10:00
 Elapsed walltime     | 00:01:08
+Time efficiency      | 11.33%
 Elapsed CPU walltime | 00:36:16
 Used CPU time        | 00:35:18.342
 CPU efficiency       | 97.37%
-% User (computation) | 96.35%
-% System (I/O)       |  3.65%
+User CPU time pct    | 96.35%
+System CPU time pct  |  3.65%
 Max memory used      | 64.74G (estimate)
 Memory efficiency    | 53.95%
 Max disk read        | 14.42M (estimate)
