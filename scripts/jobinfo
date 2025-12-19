@@ -59,7 +59,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobinfo 2.2.3")
+    print("jobinfo 2.3.0")
     sys.exit(0)
 
 if not args.jobid:
@@ -384,6 +384,25 @@ def memeff(x, y):
     allocmem = tobytes(y)
     return f"{x / allocmem * 100:5.2f}%"
 
+def timeeff(x, y):
+    """
+    Calculate time efficiency
+
+    # Arguments
+    - x (str): sacct value for timelimit
+    - y (str): sacct value for elapsed
+
+    # Returns
+    - str: "--" (if y is 0)
+    - str: formatted %
+    """
+    timelimit = toseconds(x)
+    elapsed = toseconds(y)
+    # Elapsed time is 0 if job not started
+    if elapsed == 0:
+        return "--"
+    return f"{elapsed / timelimit * 100:5.2f}%"
+
 # Define functions to get and derive job info ############################################
 
 def getsacctv(jobid, fields):
@@ -630,6 +649,11 @@ def derivev(vals):
     d["maxdiskwritefmt"] = fmtmaxbytes(d["maxdiskwrite"])
     # Calculate memory efficiency
     d["memeff"] = memeff(d["maxmem"], d["allocmem"])
+    # Calculate time efficiency if job not RUNNING
+    if "RUNNING" in d["state"]:
+        d["timeeff"] =  "--"
+    else:
+        d["timeeff"] = timeeff(d["timelimit"], d["elapsed"])
     return d
 
 # Define main function to get job info ###################################################
@@ -711,6 +735,7 @@ print("End time             | " + v["endfmt"])
 print("Wait time            | " + v["planned"])
 print("Reserved walltime    | " + v["timelimit"])
 print("Elapsed walltime     | " + v["elapsedfmt"])
+print("Time efficiency      | " + v["timeeff"])
 print("Elapsed CPU walltime | " + v["cputimefmt"])
 print("Used CPU time        | " + v["totalcpufmt"])
 print("CPU efficiency       | " + v["cpueff"])
