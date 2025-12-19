@@ -59,7 +59,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobinfo 2.2.2")
+    print("jobinfo 2.2.3")
     sys.exit(0)
 
 if not args.jobid:
@@ -591,9 +591,9 @@ def derivev(vals):
                 d["allocgpustr"] = d["allocgpus"] + " (" + d["allocgpumodels"] + ")"
     # Calculate CPU efficiency
     d["cpueff"] = cpueff(d["totalcpu"], d["cputime"])
-    # Calculate user CPU %
+    # Calculate user CPU time pct
     d["usercpupct"] = cpupct(d["usercpu"], d["totalcpu"])
-    # Calculate system CPU %
+    # Calculate system CPU time pct
     d["systemcpupct"] = cpupct(d["systemcpu"], d["totalcpu"])
     # Derive maxmem, maxdiskread, and maxdiskwrite depending on job state
     # If job is RUNNING and user or root, use sstat values
@@ -714,8 +714,8 @@ print("Elapsed walltime     | " + v["elapsedfmt"])
 print("Elapsed CPU walltime | " + v["cputimefmt"])
 print("Used CPU time        | " + v["totalcpufmt"])
 print("CPU efficiency       | " + v["cpueff"])
-print("% User (computation) | " + v["usercpupct"])
-print("% System (I/O)       | " + v["systemcpupct"])
+print("User CPU time pct    | " + v["usercpupct"])
+print("System CPU time pct  | " + v["systemcpupct"])
 print("Max memory used      | " + v["maxmemfmt"])
 print("Memory efficiency    | " + v["memeff"])
 print("Max disk read        | " + v["maxdiskreadfmt"])
