@@ -46,6 +46,8 @@ noderes -f -g
 noderes -f -g -p gpu
 noderes -m epyc-7513
 noderes -m a100,a40
+noderes -fl
+noderes -ft ndr200
 noderes -z
 noderes -z -g
 
@@ -64,6 +66,17 @@ parser.add_argument(
     "--configured",
     action = "store_true",
     help = "print configured resources"
+)
+parser.add_argument(
+    "-ft",
+    "--feature",
+    help = "filter by node feature (comma-separated list)"
+)
+parser.add_argument(
+    "-fl",
+    "--feature-list",
+    action = "store_true",
+    help = "list active node features"
 )
 parser.add_argument(
     "-f",
@@ -107,7 +120,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("noderes 1.1.0")
+    print("noderes 1.2.0")
     sys.exit(0)
 
 # Define functions #######################################################################
@@ -192,12 +205,18 @@ def getnoderes(node):
         # Can be idle, mixed, or allocated
         d["nodestateshort"] = "reserved"
 
-    # Get CPU model
+    # Get active node features
     features = re.search(r"ActiveFeatures=(\S+)", node)
     if not features:
+        d["features"] = ""
+    else:
+        d["features"] = features.group(1)
+
+    # Get CPU model
+    if not d["features"]:
         d["cpumodel"] = "n/a"
     else:
-        cpumodel = re.search(r"((epyc|xeon)[-_a-zA-Z0-9]+)", features.group(1))
+        cpumodel = re.search(r"((epyc|xeon)[-_a-zA-Z0-9]+)", d["features"])
         if not cpumodel:
             d["cpumodel"] = "n/a"
         else:
@@ -314,8 +333,30 @@ if not proc.stdout:
     sys.exit(0)
 nodelist = proc.stdout.split("\n")[:-1]
 
+# Print active node features
+if args.feature_list:
+    feats = [re.findall(r"ActiveFeatures=(\S+)", node) for node in nodelist]
+    if not feats:
+        print("No node features found")
+    else:
+        # Get sorted list of unique active node features
+        feats2 = [feat[0].split(",") for feat in feats]
+        feats3 = [allfeat for node in feats2 for allfeat in node]
+        ufeats = sorted(list(set(feats3)))
+        print("------------------------------")
+        print("Active node features")
+        print("------------------------------")
+        for ufeat in ufeats:
+            print(ufeat)
+    sys.exit(0)
+
 # Get resource information for each node
 reslist = [getnoderes(n) for n in nodelist]
+
+# Filter nodes by node feature
+if args.feature:
+    nf = args.feature.split(",")
+    reslist = [n for n in reslist if any(x in (n["features"]) for x in nf)]
 
 # Only include nodes with free resources
 if args.free:
