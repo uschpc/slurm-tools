@@ -120,7 +120,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("noderes 1.2.0")
+    print("noderes 1.2.1")
     sys.exit(0)
 
 # Define functions #######################################################################
@@ -194,6 +194,12 @@ def getnoderes(node):
     d["nodestate"] = re.search(r"State=(\S+)", node).group(1).lower()
     # Starting with Slurm 21.08, format is base_state+flag
     # For ease of printing, only use base_state with some exceptions
+    if re.search(r"idle.*planned", d["nodestate"]):
+        # Idle and planned for a job
+        d["nodestate"] = "idle/plnd"
+    if re.search(r"mixed.*planned", d["nodestate"]):
+        # Mixed and planned for a job
+        d["nodestate"] = "mix/plnd"
     d["nodestateshort"] = d["nodestate"].split("+", maxsplit = 1)[0]
     if re.search(r"drain", d["nodestate"]):
         # Special type of idle
