@@ -59,7 +59,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.version:
-    print("jobinfo 2.3.0")
+    print("jobinfo 2.3.1")
     sys.exit(0)
 
 if not args.jobid:
@@ -322,7 +322,7 @@ def fmtmaxbytes(x):
     # Value set to -1.0 if job not started or is RUNNING and not user or root or not found
     if x == -1.0:
         return "--"
-    return f"{fmtbytes(x)} (estimate)"
+    return f"{fmtbytes(x)}"
 
 # Define calculation functions ###########################################################
 
